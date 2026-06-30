@@ -1,0 +1,20 @@
+{
+  "name": "ltvcheck",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "전세보증 한도 미리보기 — 연립·다세대·오피스텔 공시가 변동 안내",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}
