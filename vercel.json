@@ -1,7 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "vite build",
-  "outputDirectory": "dist",
   "functions": {
     "api/lookup.py": { "runtime": "python3.12" }
   }

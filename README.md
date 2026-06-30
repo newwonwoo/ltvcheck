@@ -73,8 +73,13 @@ python setup_keys.py
 #   - OFFICETEL_DB_PATH 오피스텔 DB 경로(아래 적재 후)
 
 # 3) 오피스텔 DB 적재 (국세청 xlsx 필요, 연 1회)
+#    (a) 로컬 SQLite 생성
 python scripts/build_officetel_db.py --xlsx 2026파일.xlsx --year 2026 --db officetel.db
 python scripts/build_officetel_db.py --xlsx 2025파일.xlsx --year 2025 --db officetel.db
+#    (b) Turso로 업로드 (운영용 — Vercel 서버리스가 여기서 조회)
+export TURSO_DATABASE_URL=libsql://...turso.io
+export TURSO_AUTH_TOKEN=...
+python scripts/push_to_turso.py --db officetel.db
 
 # 4) 개발 서버
 npm run dev          # 프론트 (http://localhost:5173)
@@ -84,19 +89,25 @@ vercel dev           # 프론트 + /api 함께 (권장)
 키가 없어도 프론트는 뜨고, **예시 칩**으로 디자인·흐름을 볼 수 있다(샘플 데이터).
 실제 주소 조회는 키 연결 후 동작한다.
 
+> **오피스텔 DB 두 가지 모드** — `officetel.py`가 환경변수로 자동 판별:
+> - 운영(Vercel): `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` → Turso(libSQL) 조회
+> - 로컬 개발: `OFFICETEL_DB_PATH` → 로컬 SQLite 조회
+
 ---
 
 ## 배포 (Vercel)
 
 1. 이 레포를 Vercel 프로젝트로 연결 (Import Git Repository)
 2. **Settings → Environment Variables** 에 키 등록 (한 번 = 영구):
-   `JUSO_API_KEY`, `VWORLD_API_KEY`, `VWORLD_DOMAIN`, `OFFICETEL_DB_PATH`
+   `JUSO_API_KEY`, `VWORLD_API_KEY`, `VWORLD_DOMAIN`,
+   `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (오피스텔용)
    - Production / Preview / Development 모두 체크
+   - Vercel Marketplace의 **Turso Cloud** 연동 시 TURSO_* 가 자동 주입됨
 3. 배포 → `git push` 마다 자동 재배포
 
 > 키는 **서버사이드(api/lookup.py)에서만** 읽고 브라우저로 내려가지 않는다.
-> Vercel 서버리스는 로컬 SQLite 호스팅이 안 되므로, 운영에서 오피스텔은
-> 관리형 DB(libSQL/Turso 등) 커넥션 주입을 권장(`officetel.py`의 `conn` 인자).
+> 오피스텔은 Vercel 서버리스에서 로컬 파일 DB를 못 쓰므로 **Turso(libSQL)** 로 조회한다
+> (`scripts/push_to_turso.py` 로 업로드). 연립·다세대는 VWorld API라 DB 불필요.
 
 ---
 

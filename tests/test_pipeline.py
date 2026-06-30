@@ -205,6 +205,32 @@ def test_pipeline_officetel_integration():
     conn.close()
 
 
+def test_officetel_libsql_path():
+    """libSQL 클라이언트(file: = Turso와 동일 API) 조회 경로 검증."""
+    try:
+        import libsql_client
+    except ImportError:
+        print("  (libsql-client 미설치 — 스킵)")
+        return
+    import tempfile, os
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        c = libsql_client.create_client_sync(url="file:" + path)
+        c.execute("""CREATE TABLE officetel(pnu TEXT,ldcode TEXT,building TEXT,
+            dong TEXT,floor TEXT,ho TEXT,prvuse REAL,price INTEGER,year TEXT)""")
+        c.execute("INSERT INTO officetel VALUES (?,?,?,?,?,?,?,?,?)",
+                  ["1150010300103430032", "1150010300", "인터시티오피스텔", "1",
+                   "2", "201", 29.84, 2005000, "2026"])
+        from jeonse_pnu.officetel import fetch_officetel_by_pnu
+        r = fetch_officetel_by_pnu("1150010300103430032", "2026", ho="201", conn=c)
+        assert r.ok and r.price == 2005000, r.warnings
+        assert r.matched and r.matched.ho == "201"
+        c.close()
+    finally:
+        os.remove(path)
+
+
 def _run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:
