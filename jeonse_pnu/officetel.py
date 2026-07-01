@@ -181,17 +181,21 @@ def fetch_officetel_by_pnu(pnu, year=None, *, ho=None, conn=None, db_path=None):
         res.units = [_dict_to_unit(d) for d in recs]
 
         if ho:
+            # 호를 명시한 경우: 정확히 매칭돼야 한다. 못 찾으면 정직하게 실패.
             for u in res.units:
                 if _norm(u.ho) == _norm(ho):
                     res.matched = u
                     break
-            if res.matched is None and len(res.units) > 1:
-                res.warnings.append(f"호 미매칭 - 후보 {len(res.units)}건")
-
-        chosen = res.matched or res.units[0]
-        res.price = chosen.price
-        if res.matched is None and ho:
-            res.warnings.append("호 특정 실패 - 첫 세대값 사용(주의)")
+            if res.matched is None:
+                # 첫 세대값으로 폴백하지 않는다 — 잘못된 호 가격을 주는 건 위험.
+                res.warnings.append(f"호 '{ho}' 미매칭 - 해당 호 없음(후보 {len(res.units)}건)")
+                return res
+            res.price = res.matched.price
+        else:
+            # 호 미지정: 대표 1건(첫 세대) 사용은 허용하되 주의 표시
+            res.price = res.units[0].price
+            if len(res.units) > 1:
+                res.warnings.append(f"호 미지정 - 대표 세대값 사용(총 {len(res.units)}건)")
     except Exception as e:
         res.warnings.append(f"오피스텔 조회 실패: {type(e).__name__}")
     finally:

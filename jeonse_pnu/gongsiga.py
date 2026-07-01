@@ -100,7 +100,7 @@ def _build_url(pnu, *, year=None, dong=None, ho=None, key=None, domain=None,
         params["dongNm"] = dong
     if ho:
         params["hoNm"] = ho
-    if domain is not None:
+    if domain:  # 빈 문자열/None이면 domain 파라미터를 아예 안 보냄(도메인 미등록 키 대응)
         params["domain"] = domain
     return f"{VWORLD_NED_URL}?{urllib.parse.urlencode(params)}"
 

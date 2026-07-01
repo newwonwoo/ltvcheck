@@ -1,5 +1,7 @@
 import { useState, useRef } from "react";
 import Result from "./components/Result.jsx";
+import StatusCard from "./components/StatusCard.jsx";
+import RegionPicker from "./components/RegionPicker.jsx";
 import { SAMPLES } from "./data/samples.js";
 
 export default function App() {
@@ -7,10 +9,12 @@ export default function App() {
   const [dong, setDong] = useState("");
   const [ho, setHo] = useState("");
   const [result, setResult] = useState(null);
+  const [status, setStatus] = useState(null); // {kind:'error'|'empty', message, raw}
+  const [regions, setRegions] = useState(null); // 동명이지 후보 리스트
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [compact, setCompact] = useState(false);
-  const [sampleIdx, setSampleIdx] = useState(0);
+  const [isSample, setIsSample] = useState(false);
   const addrRef = useRef(null);
   const resultRef = useRef(null);
 
@@ -30,8 +34,11 @@ export default function App() {
     };
   }
 
-  function reveal(data) {
+  function reveal(data, sample = false) {
+    setStatus(null);
+    setRegions(null);
     setResult(data);
+    setIsSample(sample);
     setCompact(true);
     setShow(false);
     requestAnimationFrame(() => {
@@ -40,11 +47,45 @@ export default function App() {
     });
   }
 
+  function revealStatus(kind, message) {
+    setResult(null);
+    setRegions(null);
+    setStatus({ kind, message });
+    setCompact(true);
+    setShow(false);
+    requestAnimationFrame(() => {
+      setShow(true);
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  function revealRegions(list) {
+    setResult(null);
+    setStatus(null);
+    setRegions(list);
+    setCompact(true);
+    setShow(false);
+    requestAnimationFrame(() => {
+      setShow(true);
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  // 동명이지 후보를 고르면, 시/도·시군구를 앞에 붙여 재조회
+  function pickRegion(c) {
+    const prefix = [c["시도"], c["시군구"]].filter(Boolean).join(" ");
+    const base = addr.replace(/^\s*/, "");
+    const newAddr = prefix && !base.includes(c["시군구"]) ? `${prefix} ${base}` : base;
+    setAddr(newAddr);
+    setRegions(null);
+    // 약간의 지연 후 재조회 (상태 반영)
+    setTimeout(() => runWith(newAddr), 0);
+  }
+
   function pickSample(i) {
-    setSampleIdx(i);
     const s = SAMPLES[i];
     setAddr(s.addr + " " + s.name.split(" ")[0]);
-    reveal(s);
+    reveal(s, true); // 샘플임을 표시
   }
 
   async function run() {
@@ -53,29 +94,54 @@ export default function App() {
       addrRef.current?.focus();
       return;
     }
-    // 백엔드 연결 시도. 실패하거나 미연결이면 현재 선택 샘플로 폴백(데모).
+    runWith(q);
+  }
+
+  async function runWith(query) {
+    const q = (query || "").trim();
+    if (!q) return;
     setLoading(true);
+    setStatus(null);
     try {
       const res = await fetch("/api/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ q }),
       });
-      if (res.ok) {
-        const json = await res.json();
-        const data = adaptApiResult(json);
-        if (data && data.now != null) {
-          reveal(data);
-          return;
-        }
+      if (!res.ok) {
+        revealStatus("error", "조회 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
+        return;
       }
-      // 백엔드 미연결/빈 결과 → 데모 샘플
-      reveal(SAMPLES[sampleIdx]);
+      const json = await res.json();
+      // 동명이지: 여러 지역 후보 → 선택 UI로
+      if (json.ambiguous && json.region_candidates?.length) {
+        revealRegions(json.region_candidates);
+        return;
+      }
+      const data = adaptApiResult(json);
+      if (data && data.now != null) {
+        reveal(data); // 진짜 결과
+      } else {
+        revealStatus("empty", diagnose(json), json);
+      }
     } catch {
-      reveal(SAMPLES[sampleIdx]);
+      revealStatus("error", "네트워크 오류로 조회하지 못했어요. 연결을 확인해 주세요.");
     } finally {
       setLoading(false);
     }
+  }
+
+  // 백엔드 warnings를 사용자 메시지로 번역
+  function diagnose(json) {
+    const w = (json && json.warnings) || [];
+    const has = (s) => w.some((x) => x.includes(s));
+    if (has("INCORRECT_KEY") || has("INVALID_KEY") || has("인증"))
+      return "공시가격 조회가 일시적으로 불가해요. (관리자: 공시가 API 인증 확인 필요)";
+    if (has("juso") || (json && !json.pnu))
+      return "주소를 찾지 못했어요. 도로명 또는 지번을 다시 확인해 주세요.";
+    if (has("공시가격 미확인") || has("없음"))
+      return "이 주소의 공시가격 정보를 찾지 못했어요. 아파트이거나 공시 대상이 아닐 수 있어요.";
+    return "조회 결과를 가져오지 못했어요. 동·호를 함께 입력하면 정확도가 올라가요.";
   }
 
   return (
@@ -138,11 +204,9 @@ export default function App() {
 
         <div className="chips">
           <span className="chip-label">예시로 보기</span>
-          {SAMPLES.map((s, i) => (
-            <button key={i} className="chip" onClick={() => pickSample(i)}>
-              {s.name.split(" ").slice(0, 1)[0] + (s.name.includes("호") ? " " + s.name.split(" ").pop() : "")}
-            </button>
-          ))}
+          <button className="chip" onClick={() => pickSample(0)}>청운벽산빌리지</button>
+          <button className="chip" onClick={() => pickSample(1)}>에비앙하우스 201호</button>
+          <button className="chip" onClick={() => pickSample(2)}>인터시티오피스텔 201호</button>
         </div>
 
         <button className="cta" onClick={run} disabled={loading}>
@@ -157,9 +221,15 @@ export default function App() {
         </button>
       </section>
 
-      {/* 결과 */}
+      {/* 결과 / 상태 / 동명이지 후보 */}
       <div ref={resultRef}>
-        <Result data={result} show={show} />
+        {regions ? (
+          <RegionPicker regions={regions} onPick={pickRegion} show={show} />
+        ) : status ? (
+          <StatusCard kind={status.kind} message={status.message} show={show} />
+        ) : (
+          <Result data={result} show={show} isSample={isSample} />
+        )}
       </div>
 
       {/* 푸터 */}

@@ -1,7 +1,7 @@
 import ValueJourney from "./ValueJourney.jsx";
 import { won } from "../utils/format.js";
 
-export default function Result({ data, show }) {
+export default function Result({ data, show, isSample }) {
   if (!data) return null;
 
   const up = data.now >= data.last;
@@ -11,6 +11,9 @@ export default function Result({ data, show }) {
 
   return (
     <section className={"result" + (show ? " show" : "")} aria-live="polite">
+      {isSample && (
+        <div className="sample-badge">예시 데이터 — 실제 조회는 주소를 입력하세요</div>
+      )}
       <div className="res-head">
         <span className={"res-type " + (data.type === "오피스텔" ? "ofctl" : "gongdong")}>
           {data.typeKo}

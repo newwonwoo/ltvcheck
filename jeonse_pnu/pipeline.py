@@ -35,6 +35,8 @@ class LookupResult:
     ho: str = None
     property_type: str = None  # "공동주택"(연립/다세대) | "오피스텔"
     building_name: str = None  # 단지/건물명
+    ambiguous: bool = False         # 동명이지(여러 행정구역) 여부
+    region_candidates: list = None  # 동명이지 후보 [{시도,시군구,읍면동,pnu_prefix,대표주소}]
     price_last: int = None     # 구 공시가/기준시가(작년)
     price_this: int = None     # 신 공시가/기준시가(올해)
     price_delta: int = None
@@ -46,6 +48,8 @@ class LookupResult:
     def __post_init__(self):
         if self.warnings is None:
             self.warnings = []
+        if self.region_candidates is None:
+            self.region_candidates = []
 
     def to_dict(self):
         return asdict(self)
@@ -92,6 +96,11 @@ def lookup(text, *, this_year, last_year,
     out.warnings.extend(geo.warnings)
 
     if not geo.ok:
+        # 동명이지(여러 행정구역) → 정직하게 상위 행정구역 요구 + 후보 전달
+        if getattr(geo, "ambiguous", False):
+            out.ambiguous = True
+            out.region_candidates = geo.region_candidates
+            out.warnings.append("여러 지역에 같은 동명 - 시/도·시군구를 함께 입력하세요")
         # 정제 실패 → 신뢰도 F로 마감
         c = score_confidence(refine_tier=0, has_jibun=bool(parsed.본번),
                              has_ho=bool(parsed.호), warnings=out.warnings)

@@ -231,6 +231,61 @@ def test_officetel_libsql_path():
         os.remove(path)
 
 
+def test_geocode_dongmyeong_iji():
+    """동명이지: 여러 행정구역 매칭 시 1순위 단정 말고 후보 전부 + ambiguous."""
+    from jeonse_pnu.providers import geocode_juso
+
+    def juso_multi(url, timeout=5):
+        return json.dumps({"results": {"common": {"errorCode": "0"}, "juso": [
+            {"admCd": "2611010100", "siNm": "부산광역시", "sggNm": "중구", "emdNm": "중앙동",
+             "roadAddr": "부산 중앙대로", "jibunAddr": "부산 중앙동 300",
+             "lnbrMnnm": "300", "lnbrSlno": "0", "mtYn": "0"},
+            {"admCd": "3011010100", "siNm": "대전광역시", "sggNm": "중구", "emdNm": "중앙동",
+             "roadAddr": "대전 중앙로", "jibunAddr": "대전 중앙동 300",
+             "lnbrMnnm": "300", "lnbrSlno": "0", "mtYn": "0"},
+        ]}})
+    r = geocode_juso("중앙동 300", http_get=juso_multi, key="D")
+    assert not r.ok and r.ambiguous
+    assert len(r.region_candidates) == 2
+    assert any("동명이지" in w for w in r.warnings)
+
+
+def test_geocode_same_dong_compressed():
+    """같은 법정동의 복수 표현은 prefix로 압축 → 자동 확정."""
+    from jeonse_pnu.providers import geocode_juso
+
+    def juso_same(url, timeout=5):
+        return json.dumps({"results": {"common": {"errorCode": "0"}, "juso": [
+            {"admCd": "1168010100", "siNm": "서울", "sggNm": "강남구", "emdNm": "역삼동",
+             "roadAddr": "테헤란로 152", "jibunAddr": "역삼동 737",
+             "lnbrMnnm": "737", "lnbrSlno": "0", "mtYn": "0", "bdKdcd": "0"},
+            {"admCd": "1168010100", "siNm": "서울", "sggNm": "강남구", "emdNm": "역삼동",
+             "roadAddr": "테헤란로 154", "jibunAddr": "역삼동 737-1",
+             "lnbrMnnm": "737", "lnbrSlno": "1", "mtYn": "0", "bdKdcd": "0"},
+        ]}})
+    r = geocode_juso("역삼동", http_get=juso_same, key="D")
+    assert r.ok and not r.ambiguous
+    assert r.parts.to_pnu().startswith("1168010100")
+
+
+def test_geocode_cascade_strip_detail():
+    """캐스케이드: 동/호 붙은 원문 0건 → 상세 제거본으로 성공."""
+    from jeonse_pnu.providers import geocode
+    import urllib.parse as up
+
+    def juso_cascade(url, timeout=5):
+        q = up.parse_qs(up.urlparse(url).query).get("keyword", [""])[0]
+        if "호" in q:  # 상세주소 남아있으면 0건
+            return json.dumps({"results": {"common": {"errorCode": "0"}, "juso": []}})
+        return json.dumps({"results": {"common": {"errorCode": "0"}, "juso": [
+            {"admCd": "1150010300", "siNm": "서울", "sggNm": "강서구", "emdNm": "화곡동",
+             "roadAddr": "화곡로 100", "jibunAddr": "화곡동 504-32",
+             "lnbrMnnm": "504", "lnbrSlno": "32", "mtYn": "0", "bdKdcd": "1"}]}})
+    r = geocode("서울 강서구 화곡동 504-32 102동 301호",
+                juso_http=juso_cascade, juso_key="D", kakao_key=None)
+    assert r.ok and r.parts.to_pnu() == "1150010300105040032"
+
+
 def _run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:
