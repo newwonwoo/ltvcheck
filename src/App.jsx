@@ -47,10 +47,10 @@ export default function App() {
     });
   }
 
-  function revealStatus(kind, message) {
+  function revealStatus(kind, title, message) {
     setResult(null);
     setRegions(null);
-    setStatus({ kind, message });
+    setStatus({ kind, title, message });
     setCompact(true);
     setShow(false);
     requestAnimationFrame(() => {
@@ -109,7 +109,7 @@ export default function App() {
         body: JSON.stringify({ q }),
       });
       if (!res.ok) {
-        revealStatus("error", "조회 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
+        revealStatus("error", "조회를 마치지 못했어요", "조회 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
         return;
       }
       const json = await res.json();
@@ -122,10 +122,11 @@ export default function App() {
       if (data && data.now != null) {
         reveal(data); // 진짜 결과
       } else {
-        revealStatus("empty", diagnose(json), json);
+        const d = diagnose(json);
+        revealStatus(d.kind, d.title, d.message, json);
       }
     } catch {
-      revealStatus("error", "네트워크 오류로 조회하지 못했어요. 연결을 확인해 주세요.");
+      revealStatus("error", "조회를 마치지 못했어요", "네트워크 오류로 조회하지 못했어요. 연결을 확인해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -135,13 +136,42 @@ export default function App() {
   function diagnose(json) {
     const w = (json && json.warnings) || [];
     const has = (s) => w.some((x) => x.includes(s));
-    if (has("INCORRECT_KEY") || has("INVALID_KEY") || has("인증"))
-      return "공시가격 조회가 일시적으로 불가해요. (관리자: 공시가 API 인증 확인 필요)";
-    if (has("juso") || (json && !json.pnu))
-      return "주소를 찾지 못했어요. 도로명 또는 지번을 다시 확인해 주세요.";
-    if (has("공시가격 미확인") || has("없음"))
-      return "이 주소의 공시가격 정보를 찾지 못했어요. 아파트이거나 공시 대상이 아닐 수 있어요.";
-    return "조회 결과를 가져오지 못했어요. 동·호를 함께 입력하면 정확도가 올라가요.";
+    const addrFound = !!(json && json.pnu); // 주소 정제 성공 여부
+
+    // 공시가 인증오류 — 주소는 찾았으나 공시가 서버가 막힌 경우
+    if (has("INCORRECT_KEY") || has("INVALID_KEY") || has("인증")) {
+      return {
+        kind: "error",
+        title: addrFound ? "주소는 확인했어요 · 공시가만 못 불러왔어요" : "공시가를 불러오지 못했어요",
+        message:
+          (addrFound ? `‘${json.refined_address || ""}’ 주소는 찾았어요. ` : "") +
+          "다만 공시가격 조회가 지금 막혀 있어요. (관리자: 공시가 API 인증 확인 필요)",
+      };
+    }
+    // 주소 자체를 못 찾음
+    if (!addrFound || has("정제 실패") || has("juso")) {
+      return {
+        kind: "empty",
+        title: "주소를 찾지 못했어요",
+        message: "도로명 또는 지번 주소를 다시 확인해 주세요. (예: 영등포구 도신로29길 28)",
+      };
+    }
+    // 주소는 찾았으나 공시가 데이터가 없음(아파트/비대상 등)
+    if (has("공시가격 미확인") || has("없음") || has("오피스텔")) {
+      const isApt = json.property_type == null && addrFound;
+      return {
+        kind: "empty",
+        title: "공시가격 정보가 없어요",
+        message: isApt
+          ? "아파트이거나 공시 대상이 아닐 수 있어요. 이 서비스는 연립·다세대·오피스텔의 공시가만 안내해요."
+          : "이 주소의 공시가격 정보를 찾지 못했어요. 오피스텔이면 잠시 후 다시 시도해 주세요.",
+      };
+    }
+    return {
+      kind: "empty",
+      title: "결과를 가져오지 못했어요",
+      message: "동·호를 함께 입력하면 정확도가 올라가요.",
+    };
   }
 
   return (

@@ -1,7 +1,7 @@
 // 조회 실패·빈 결과를 정직하게 안내하는 카드.
 // 목업으로 메우지 않고, 무엇이 왜 안 됐는지 + 다음 행동을 알려준다.
 
-export default function StatusCard({ kind, message, show }) {
+export default function StatusCard({ kind, title, message, show }) {
   const isError = kind === "error";
   return (
     <section className={"result" + (show ? " show" : "")} aria-live="polite">
@@ -20,7 +20,7 @@ export default function StatusCard({ kind, message, show }) {
           )}
         </span>
         <div className="status-text">
-          <p className="status-main">{isError ? "조회를 마치지 못했어요" : "결과를 찾지 못했어요"}</p>
+          <p className="status-main">{title || (isError ? "조회를 마치지 못했어요" : "결과를 찾지 못했어요")}</p>
           <p className="status-sub">{message}</p>
         </div>
       </div>
