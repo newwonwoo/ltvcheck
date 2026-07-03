@@ -77,13 +77,11 @@ export default function App() {
 
   // 동명이지 후보를 고르면, 시/도·시군구를 앞에 붙여 재조회
   function pickRegion(c) {
-    const prefix = [c["시도"], c["시군구"]].filter(Boolean).join(" ");
-    const base = addr.replace(/^\s*/, "");
-    const newAddr = prefix && !base.includes(c["시군구"]) ? `${prefix} ${base}` : base;
-    setAddr(newAddr);
+    // 후보의 정확한 대표주소로 직접 조회(원래 입력을 재검색하면 또 같은 후보가 나옴)
+    const target = c["대표주소"] || [c["시도"], c["시군구"], c["읍면동"]].filter(Boolean).join(" ");
+    setAddr(target);
     setRegions(null);
-    // 약간의 지연 후 재조회 (상태 반영)
-    setTimeout(() => runWith(newAddr), 0);
+    setTimeout(() => runWith(target), 0);
   }
 
   function pickSample(i) {
@@ -239,12 +237,12 @@ export default function App() {
         <div className="sub-row">
           <div className="col">
             <input className={"addr-input" + (unitNeeded ? " need" : "")} type="text" autoComplete="off"
-              placeholder={unitNeeded ? "동 (예: 101)" : "동 (선택)"}
+              placeholder={unitNeeded ? "동 · 숫자만 (예: 105)" : "동 (선택)"}
               value={dong} onChange={(e) => setDong(e.target.value)} />
           </div>
           <div className="col">
             <input className={"addr-input" + (unitNeeded ? " need" : "")} type="text" autoComplete="off"
-              placeholder={unitNeeded ? "호 (예: 302) *필수" : "호 (선택)"}
+              placeholder={unitNeeded ? "호 · 숫자만 (예: 1403)" : "호 (선택)"}
               value={ho} onChange={(e) => setHo(e.target.value)} />
           </div>
         </div>

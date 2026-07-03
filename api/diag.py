@@ -127,16 +127,18 @@ def _check_vworld(pnu):
 
 
 def _check_officetel():
-    """오피스텔 DB(Turso 또는 로컬 SQLite) 연결 점검."""
+    """오피스텔 DB(Postgres/Turso/로컬 SQLite) 연결 점검."""
     out = {"name": "오피스텔기준시가(DB)", "ok": False, "detail": ""}
+    pg = os.environ.get("POSTGRES_URL", "").strip() or os.environ.get("DATABASE_URL", "").strip()
     turso = os.environ.get("TURSO_DATABASE_URL", "").strip()
     token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
     local = os.environ.get("OFFICETEL_DB_PATH", "").strip()
-    out["mode"] = "Turso" if turso else ("로컬SQLite" if local else "미설정")
+    out["mode"] = "Postgres" if pg else ("Turso" if turso else ("로컬SQLite" if local else "미설정"))
+    out["postgres_url"] = {"set": bool(pg)}
     out["turso_url"] = {"set": bool(turso)}
     out["turso_token"] = {"set": bool(token)}
-    if not turso and not local:
-        out["detail"] = "오피스텔 DB 미설정(TURSO_DATABASE_URL 또는 OFFICETEL_DB_PATH). 연립·다세대는 영향 없음."
+    if not pg and not turso and not local:
+        out["detail"] = "오피스텔 DB 미설정(POSTGRES_URL / TURSO_DATABASE_URL / OFFICETEL_DB_PATH). 연립·다세대는 영향 없음."
         return out
     try:
         from jeonse_pnu.officetel import fetch_officetel_by_pnu
@@ -145,13 +147,13 @@ def _check_officetel():
         if r.ok:
             out["ok"] = True
             out["detail"] = f"조회 성공 → {r.price:,}원"
-        elif r.total_count > 0:
+        elif r.total_count > 0 or r.needs_unit:
             out["ok"] = True
-            out["detail"] = f"DB 연결됨(해당 호 없음, 총 {r.total_count}건)"
+            out["detail"] = f"DB 연결됨(총 {r.total_count}건)"
         else:
             out["detail"] = "DB 연결됐으나 데이터 없음: " + "; ".join(r.warnings or [])
             if any("미설치" in x for x in (r.warnings or [])):
-                out["hint"] = "libsql-client 미설치 → requirements.txt 확인"
+                out["hint"] = "DB 드라이버 미설치 → requirements.txt(psycopg 또는 libsql-client) 확인"
     except Exception as e:
         out["detail"] = f"예외: {type(e).__name__}: {e}"
     return out

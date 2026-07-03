@@ -313,6 +313,43 @@ def test_pipeline_multi_unit_requires_dongho():
     assert out2.ok and out2.price_this == 461000000 and not out2.needs_unit
 
 
+def test_road_name_space_normalize():
+    """도로명 내부 공백('도신로 29길')을 붙여 건물번호를 안 잃게."""
+    from jeonse_pnu.registry_parser import parse_registry_address as P
+    # 띄어쓴 도로명도 건물번호 보존 + 검색질의에 붙여쓰기
+    p1 = P("서울특별시 영등포구 도신로 29길 28")
+    assert p1.도로명여부 and p1.건물번호 == "28"
+    assert "도신로29길" in p1.검색질의 and "28" in p1.검색질의
+    # 붙여쓴 것과 동일 결과
+    p2 = P("서울특별시 영등포구 도신로29길 28")
+    assert p2.검색질의 == p1.검색질의
+    # 일반 '로 + 번호'는 그대로(경인로 302)
+    p3 = P("서울 구로구 경인로 302")
+    assert p3.도로명여부 and p3.건물번호 == "302"
+
+
+def test_road_addr_no_truncation():
+    """도로명주소는 절삭검색으로 엉뚱한 후보를 만들지 않는다."""
+    import json as _j
+    from jeonse_pnu.providers import geocode
+
+    calls = []
+
+    def juso_miss(url, timeout=5):
+        # 무엇을 검색하든 빈 결과(도로명 원본을 못 찾는 상황 재현)
+        import urllib.parse as up
+        q = up.parse_qs(up.urlparse(url).query).get("keyword", [""])[0]
+        calls.append(q)
+        return _j.dumps({"results": {"common": {"errorCode": "0"}, "juso": []}})
+
+    r = geocode("서울특별시 영등포구 도신로29길 28",
+                juso_http=juso_miss, juso_key="D", kakao_key=None)
+    # 도로명이므로 절삭검색('도신로29길'만 남기기 등)을 시도하지 않아야 함
+    assert not r.ok
+    # 건물번호를 뗀 부분검색이 호출되지 않았는지(절삭 억제 확인)
+    assert not any(c.strip().endswith("도신로29길") for c in calls)
+
+
 def _run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

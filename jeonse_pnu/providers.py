@@ -269,15 +269,19 @@ def geocode(query, *, juso_http=None, kakao_http=None,
     tried += r3.warnings
 
     # 4) 점진적 절삭: 뒤 토큰부터 하나씩 떼며 juso 재검색
-    toks = stripped.split()
-    for cut in range(1, min(3, len(toks))):  # 최대 2토큰까지만 절삭
-        sub = " ".join(toks[:-cut])
-        if len(sub) < 4:
-            break
-        r4 = geocode_juso(sub, http_get=juso_http, key=juso_key)
-        if r4.ok or r4.ambiguous:
-            r4.warnings = tried + [f"절삭검색 적용('{sub}')"] + r4.warnings
-            return r4
+    #    단, 도로명주소는 건물번호를 떼면 완전히 다른 주소가 되므로 절삭 금지.
+    from .registry_parser import parse_registry_address as _parse
+    is_road = _parse(query).도로명여부
+    if not is_road:
+        toks = stripped.split()
+        for cut in range(1, min(3, len(toks))):  # 최대 2토큰까지만 절삭
+            sub = " ".join(toks[:-cut])
+            if len(sub) < 4:
+                break
+            r4 = geocode_juso(sub, http_get=juso_http, key=juso_key)
+            if r4.ok or r4.ambiguous:
+                r4.warnings = tried + [f"절삭검색 적용('{sub}')"] + r4.warnings
+                return r4
 
     # 전부 실패
     r.warnings = tried + ["정제 실패 - 모든 폴백 소진"]

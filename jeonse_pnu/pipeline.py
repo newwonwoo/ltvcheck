@@ -171,6 +171,20 @@ def lookup(text, *, this_year, last_year,
         chosen = ofc_cur.matched or (ofc_cur.units[0] if ofc_cur.units else None)
         out.building_name = getattr(chosen, "building", None)
         ho_matched = (ofc_cur.matched is not None) or (ofc_prev.matched is not None)
+    elif ofc_cur.needs_unit:
+        # 오피스텔 여러 호인데 호 미특정 → 값 없이 호 요구
+        prev, cur = ofc_prev, ofc_cur
+        rep = ofc_cur.units[0] if ofc_cur.units else None
+        out.property_type = "오피스텔"
+        out.is_target = True
+        out.building_name = getattr(rep, "building", None)
+        out.needs_unit = True
+        out.warnings.extend(ofc_cur.warnings)
+        c = score_confidence(refine_tier=geo.tier, has_jibun=bool(parsed.본번),
+                             has_ho=False, warnings=out.warnings)
+        out.confidence_score, out.confidence_grade = c.score, c.grade
+        out.needs_manual_check = c.needs_manual_check
+        return out
     else:
         # 둘 다 없음 — 경고만 모아 전달
         prev, cur = apt_prev, apt_cur

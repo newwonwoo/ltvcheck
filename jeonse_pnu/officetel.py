@@ -5,11 +5,12 @@ officetel.py — 오피스텔 기준시가 조회 (국세청 파일 기반 DB)
 오피스텔은 "공동주택"이 아니라 국세청 상업용건물/오피스텔 기준시가(파일)로만 제공된다.
 그래서 오피스텔은 파일을 적재한 DB에서 조회한다.
 
-[DB 두 가지 모드 — 자동 판별]
+[DB 세 가지 모드 — 자동 판별]
   1) 로컬 SQLite : OFFICETEL_DB_PATH=/경로/officetel.db  (개발/EC2)
   2) Turso(libSQL): TURSO_DATABASE_URL + TURSO_AUTH_TOKEN  (Vercel 서버리스)
-     - Vercel 서버리스는 로컬 파일 DB를 못 쓰므로 운영은 Turso 권장.
-     - libsql_client.create_client_sync(url, auth_token) 로 연결, 같은 SQL 사용.
+  3) Postgres(Neon): POSTGRES_URL (Vercel Postgres/Neon 통합 시 자동 주입)
+     - psycopg로 연결. Vercel Storage에서 Postgres 생성 시 POSTGRES_URL 자동 설정.
+     - 우선순위: Postgres > Turso > 로컬 SQLite.
 
 [원천 파일] 국세청_상업용건물_오피스텔_기준시가 (xlsx, 연 1회)
   → 상가종류코드='오피스텔'만 사용.
@@ -58,6 +59,7 @@ class OfficetelResult:
     matched: OfficetelUnit = None
     price: int = None
     total_count: int = 0
+    needs_unit: bool = False    # 여러 호라 호 입력이 필요함
     warnings: list = field(default_factory=list)
 
     @property
@@ -66,9 +68,9 @@ class OfficetelResult:
 
 
 def _norm(v):
-    if v is None:
-        return ""
-    return str(v).strip().replace(" ", "").rstrip("호동층")
+    # 동/호 정규화는 gongsiga와 동일 규칙 사용(숫자만 입력해도 인식)
+    from .gongsiga import _norm as _gnorm
+    return _gnorm(v)
 
 
 def _dict_to_unit(d):
@@ -103,12 +105,39 @@ def _query_libsql(client, sql, params):
     return out
 
 
+def _query_postgres(conn, sql, params):
+    # psycopg: %s 플레이스홀더. 컬럼명은 cursor.description에서.
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    cols = [d[0] for d in cur.description]
+    rows = cur.fetchall()
+    cur.close()
+    return [dict(zip(cols, r)) for r in rows]
+
+
+def _placeholder(kind):
+    """백엔드별 SQL 파라미터 표기: sqlite/libsql은 '?', postgres는 '%s'."""
+    return "%s" if kind == "postgres" else "?"
+
+
 def _open_default():
     """
     환경에 맞는 DB 연결을 연다.
-    우선순위: Turso(TURSO_DATABASE_URL) > 로컬 SQLite(OFFICETEL_DB_PATH).
-    반환: (kind, handle, own)  kind ∈ {"libsql","sqlite",None}
+    우선순위: Postgres(POSTGRES_URL) > Turso(TURSO_DATABASE_URL) > 로컬 SQLite(OFFICETEL_DB_PATH).
+    반환: (kind, handle, own)  kind ∈ {"postgres","libsql","sqlite","error",None}
     """
+    # 1) Postgres (Vercel Postgres/Neon) — POSTGRES_URL 자동 주입
+    pg_url = _env("POSTGRES_URL") or _env("DATABASE_URL")
+    if pg_url:
+        try:
+            import psycopg
+        except ImportError:
+            return ("error", "psycopg 미설치 (requirements.txt에 psycopg[binary])", False)
+        # Neon은 sslmode=require 필요. URL에 없으면 붙인다.
+        conn = psycopg.connect(pg_url)
+        return ("postgres", conn, True)
+
+    # 2) Turso(libSQL)
     turso_url = _env("TURSO_DATABASE_URL")
     if turso_url:
         try:
@@ -119,6 +148,7 @@ def _open_default():
         client = libsql_client.create_client_sync(url=turso_url, auth_token=token)
         return ("libsql", client, True)
 
+    # 3) 로컬 SQLite
     path = _env("OFFICETEL_DB_PATH")
     if path:
         if not os.path.exists(path):
@@ -139,19 +169,14 @@ def fetch_officetel_by_pnu(pnu, year=None, *, ho=None, conn=None, db_path=None):
     """
     res = OfficetelResult(year=str(year) if year else None)
 
-    sql = "SELECT pnu, ldcode, building, dong, floor, ho, prvuse, price, year " \
-          "FROM officetel WHERE pnu = ?"
-    params = [pnu]
-    if year:
-        sql += " AND year = ?"
-        params.append(str(year))
-
     kind, handle, own = None, None, False
     try:
         if conn is not None:
-            # 주입 커넥션: sqlite3인지 libsql인지 판별
+            # 주입 커넥션: sqlite3 / psycopg / libsql 판별
             if isinstance(conn, sqlite3.Connection):
                 kind, handle = "sqlite", conn
+            elif type(conn).__module__.startswith("psycopg"):
+                kind, handle = "postgres", conn
             else:
                 kind, handle = "libsql", conn
         elif db_path:
@@ -162,14 +187,25 @@ def fetch_officetel_by_pnu(pnu, year=None, *, ho=None, conn=None, db_path=None):
         else:
             kind, handle, own = _open_default()
             if kind is None:
-                res.warnings.append("오피스텔 DB 미설정(OFFICETEL_DB_PATH/TURSO_DATABASE_URL)")
+                res.warnings.append("오피스텔 DB 미설정(POSTGRES_URL/TURSO_DATABASE_URL/OFFICETEL_DB_PATH)")
                 return res
             if kind == "error":
                 res.warnings.append(handle)
                 return res
 
+        # 백엔드별 파라미터 표기(?/%s)로 SQL 구성
+        ph = _placeholder(kind)
+        sql = ("SELECT pnu, ldcode, building, dong, floor, ho, prvuse, price, year "
+               f"FROM officetel WHERE pnu = {ph}")
+        params = [pnu]
+        if year:
+            sql += f" AND year = {ph}"
+            params.append(str(year))
+
         if kind == "sqlite":
             recs = _query_sqlite(handle, sql, params)
+        elif kind == "postgres":
+            recs = _query_postgres(handle, sql, params)
         else:
             recs = _query_libsql(handle, sql, params)
 
@@ -180,22 +216,22 @@ def fetch_officetel_by_pnu(pnu, year=None, *, ho=None, conn=None, db_path=None):
 
         res.units = [_dict_to_unit(d) for d in recs]
 
+        # 값 확정 규칙 (임의 대표세대 금지 — gongsiga와 동일 원칙)
         if ho:
-            # 호를 명시한 경우: 정확히 매칭돼야 한다. 못 찾으면 정직하게 실패.
             for u in res.units:
                 if _norm(u.ho) == _norm(ho):
                     res.matched = u
                     break
             if res.matched is None:
-                # 첫 세대값으로 폴백하지 않는다 — 잘못된 호 가격을 주는 건 위험.
                 res.warnings.append(f"호 '{ho}' 미매칭 - 해당 호 없음(후보 {len(res.units)}건)")
                 return res
             res.price = res.matched.price
-        else:
-            # 호 미지정: 대표 1건(첫 세대) 사용은 허용하되 주의 표시
+        elif len(res.units) == 1:
             res.price = res.units[0].price
-            if len(res.units) > 1:
-                res.warnings.append(f"호 미지정 - 대표 세대값 사용(총 {len(res.units)}건)")
+        else:
+            # 여러 호인데 호 미지정 → 임의 대표값 안 냄, 호 입력 요구
+            res.needs_unit = True
+            res.warnings.append(f"호 {len(res.units)}건 - 호를 입력해야 특정 가능")
     except Exception as e:
         res.warnings.append(f"오피스텔 조회 실패: {type(e).__name__}")
     finally:

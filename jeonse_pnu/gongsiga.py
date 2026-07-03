@@ -106,11 +106,32 @@ def _build_url(pnu, *, year=None, dong=None, ho=None, key=None, domain=None,
     return f"{VWORLD_NED_URL}?{urllib.parse.urlencode(params)}"
 
 
+import re as _re
+
 def _norm(v):
-    """동/호 비교용 정규화: 공백·'호'·'동' 꼬리 제거."""
+    """
+    동/호 비교용 정규화. 사용자가 숫자만 넣어도 인식되게:
+      "제105동" / "105동" / "105" → "105"
+      "1403호" / "1403" → "1403"
+      "101-1403" / "101동 1403호" 류의 하이픈/구분자 제거
+      "B동" / "가동" 등 숫자 없는 동은 한글/영문 그대로(소문자화)
+    """
     if v is None:
         return ""
-    return str(v).strip().replace(" ", "").rstrip("호동층")
+    s = str(v).strip().replace(" ", "")
+    # 접두 '제' 및 단위 꼬리 제거
+    s = s.lstrip("제").rstrip("호동층")
+    # 핵심 숫자(+하이픈/영문 섞인 호수)가 있으면 그것만 사용
+    #  - 순수 숫자면 앞 0 제거해 105==0105 매칭
+    if s.isdigit():
+        return str(int(s))  # "0105" -> "105"
+    # 숫자+구분자+숫자(예: 101-1403) → 숫자만 이어붙임
+    digits = _re.findall(r"\d+", s)
+    if digits:
+        # 앞 0 제거해 이어붙임
+        return "".join(str(int(d)) for d in digits)
+    # 숫자 없음(가동/나동/B동 등) → 소문자 원문
+    return s.lower()
 
 
 def _parse_json(raw):
