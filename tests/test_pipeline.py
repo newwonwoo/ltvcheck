@@ -350,6 +350,65 @@ def test_road_addr_no_truncation():
     assert not any(c.strip().endswith("도신로29길") for c in calls)
 
 
+def test_explicit_dong_ho_numbers_only():
+    """동·호를 숫자만 별도 필드로 넘기면 매칭된다(문자열 파싱 비의존)."""
+    import json as _j
+
+    def juso(url, timeout=5):
+        return _j.dumps({"results": {"common": {"errorCode": "0"}, "juso": [
+            {"admCd": "1153010700", "siNm": "서울", "sggNm": "구로구", "emdNm": "개봉동",
+             "roadAddr": "경인로 302", "jibunAddr": "개봉동 497",
+             "lnbrMnnm": "497", "lnbrSlno": "0", "mtYn": "0", "bdKdcd": "1"}]}}, ensure_ascii=False)
+
+    def apt_multi(url, timeout=6):
+        y = "2026" if "stdrYear=2026" in url else "2025"
+        base = 500000000 if y == "2026" else 491000000
+        fields = []
+        for d in ["104", "105"]:
+            for h in ["1402", "1403"]:
+                bump = 10000000 if (d == "105" and h == "1403") else 0
+                fields.append({"pnu": "P", "aphusNm": "센트레빌", "aphusSeCodeNm": "아파트",
+                               "dongNm": d, "hoNm": h, "floorNm": "14", "prvuseAr": "84",
+                               "pblntfPc": str(base + bump), "stdrYear": y})
+        return _j.dumps({"apartHousingPrices": {"totalCount": len(fields), "fields": {"field": fields}}}, ensure_ascii=False)
+
+    # 숫자만 별도 필드 → 매칭
+    out = lookup("서울특별시 구로구 경인로 302", this_year="2026", last_year="2025",
+                 dong="105", ho="1403", juso_http=juso, juso_key="D",
+                 gongsiga_http=apt_multi, gongsiga_key="D")
+    assert out.ok and not out.needs_unit and out.price_this == 510000000
+    # 동·호 없으면 needs_unit
+    out2 = lookup("서울특별시 구로구 경인로 302", this_year="2026", last_year="2025",
+                  juso_http=juso, juso_key="D", gongsiga_http=apt_multi, gongsiga_key="D")
+    assert not out2.ok and out2.needs_unit
+
+
+def test_match_ho_only_when_no_dong():
+    """VWorld 응답에 동이 없으면(빈값) 호로만 특정한다(센트레빌 케이스)."""
+    from jeonse_pnu.gongsiga import fetch_price_by_pnu
+
+    def vw_nodong(url, timeout=6):
+        y = "2026" if "stdrYear=2026" in url else "2025"
+        p = 510000000 if y == "2026" else 491000000
+        fields = [{"pnu": "P", "aphusNm": "센트레빌", "aphusSeCodeNm": "아파트",
+                   "dongNm": "", "hoNm": h, "floorNm": "14", "prvuseAr": "84",
+                   "pblntfPc": str(p), "stdrYear": y} for h in ["1401", "1402", "1403"]]
+        return json.dumps({"apartHousingPrices": {"totalCount": 3, "fields": {"field": fields}}}, ensure_ascii=False)
+
+    # 동을 넣어도 VWorld에 동이 없으니 호로만 매칭돼 특정 성공
+    r = fetch_price_by_pnu("P", "2026", dong="105", ho="1403", http_get=vw_nodong, key="D")
+    assert r.ok and r.price == 510000000 and not r.needs_unit
+
+    # 같은 호가 여러 동에 있으면 동이 필요 → needs_unit
+    def vw_dupho(url, timeout=6):
+        fields = [{"pnu": "P", "aphusNm": "x", "aphusSeCodeNm": "아파트",
+                   "dongNm": d, "hoNm": "1403", "floorNm": "14", "prvuseAr": "84",
+                   "pblntfPc": "510000000", "stdrYear": "2026"} for d in ["105", "106"]]
+        return json.dumps({"apartHousingPrices": {"totalCount": 2, "fields": {"field": fields}}}, ensure_ascii=False)
+    r2 = fetch_price_by_pnu("P", "2026", ho="1403", http_get=vw_dupho, key="D")
+    assert not r2.ok and r2.needs_unit
+
+
 def _run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

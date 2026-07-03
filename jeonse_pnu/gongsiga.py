@@ -212,21 +212,35 @@ def fetch_price_by_pnu(pnu, year=None, *, dong=None, ho=None,
 
         res.units = [_to_unit(f) for f in fields]
 
-        # 동/호 매칭
+        # 동/호 매칭 (VWorld 응답에 동 표기가 없는 단지가 흔하므로 단계적으로)
         if dong or ho:
-            for u in res.units:
-                d_ok = (not dong) or _norm(u.dongNm) == _norm(dong)
+            # 1차: 동+호 둘 다 일치(가장 엄격)
+            def match(u, use_dong):
+                d_ok = (not dong) or (not use_dong) or _norm(u.dongNm) == _norm(dong)
                 h_ok = (not ho) or _norm(u.hoNm) == _norm(ho)
-                if d_ok and h_ok:
-                    res.matched = u
-                    break
+                return d_ok and h_ok
+
+            cands = [u for u in res.units if match(u, use_dong=True)]
+
+            # 2차: 동으로 못 좁혔고 VWorld에 동 정보가 비어있으면 → 호로만 매칭
+            vworld_has_dong = any(_norm(u.dongNm) for u in res.units)
+            if not cands and ho and not vworld_has_dong:
+                cands = [u for u in res.units if _norm(u.hoNm) == _norm(ho)]
+                if cands:
+                    res.warnings.append("공시가 데이터에 동 구분이 없어 호로만 특정")
+
+            if len(cands) == 1:
+                res.matched = cands[0]
+            elif len(cands) > 1:
+                # 호로만 좁혔는데 여러 동에 같은 호 → 동이 꼭 필요
+                res.needs_unit = True
+                res.warnings.append(f"같은 호가 여러 동에 있음({len(cands)}건) - 동을 입력해야 특정 가능")
 
         # 값 확정 규칙 (임의 대표세대 금지):
-        #  - 매칭된 세대가 있으면 그 값
-        #  - 매칭 없고 세대가 딱 1건이면 그 값(특정 불필요)
-        #  - 세대 여럿인데 특정 못 하면 값을 내지 않음 → 동/호 요구
         if res.matched is not None:
             res.price = res.matched.price
+        elif res.needs_unit:
+            pass  # 위에서 이미 needs_unit 설정
         elif len(res.units) == 1:
             res.price = res.units[0].price
         else:

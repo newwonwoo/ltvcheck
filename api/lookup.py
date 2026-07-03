@@ -35,13 +35,14 @@ def _years():
     return str(y), str(y - 1)
 
 
-def _run(query):
+def _run(query, dong=None, ho=None):
     if not query or not query.strip():
         return {"ok": False, "error": "주소 또는 등기고유번호를 입력하세요."}
 
     this_year, last_year = _years()
     # 키는 환경변수에서 자동 주입(인자로 넘기지 않으면 lookup 내부가 os.environ 사용)
-    result = lookup(query.strip(), this_year=this_year, last_year=last_year)
+    result = lookup(query.strip(), this_year=this_year, last_year=last_year,
+                    dong=dong or None, ho=ho or None)
     return result.to_dict()
 
 
@@ -58,7 +59,9 @@ class handler(BaseHTTPRequestHandler):
         try:
             qs = parse_qs(urlparse(self.path).query)
             query = (qs.get("q") or [""])[0]
-            self._send(200, _run(query))
+            dong = (qs.get("dong") or [""])[0]
+            ho = (qs.get("ho") or [""])[0]
+            self._send(200, _run(query, dong, ho))
         except Exception as e:
             self._send(500, {"ok": False, "error": f"{type(e).__name__}"})
 
@@ -67,6 +70,6 @@ class handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length).decode("utf-8") if length else "{}"
             data = json.loads(raw or "{}")
-            self._send(200, _run(data.get("q", "")))
+            self._send(200, _run(data.get("q", ""), data.get("dong", ""), data.get("ho", "")))
         except Exception as e:
             self._send(500, {"ok": False, "error": f"{type(e).__name__}"})

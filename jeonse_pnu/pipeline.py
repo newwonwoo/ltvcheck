@@ -58,6 +58,7 @@ class LookupResult:
 
 
 def lookup(text, *, this_year, last_year,
+           dong=None, ho=None,
            registry_lookup=None,
            juso_http=None, kakao_http=None, gongsiga_http=None,
            juso_key=None, kakao_key=None, gongsiga_key=None,
@@ -67,6 +68,7 @@ def lookup(text, *, this_year, last_year,
     입력 문자열 하나로 구·신 공시가와 신뢰도를 반환한다.
 
     this_year/last_year: 비교할 두 공시연도(예: "2026","2025")
+    dong/ho            : 명시적 동·호(입력칸에서 분리해 받은 값). 주어지면 파싱보다 우선.
     registry_lookup    : 등기고유번호 → 주소 콜백(보증 DB 조회)
     *_http / *_key     : 테스트/운영용 주입(없으면 환경변수 사용)
     """
@@ -85,10 +87,10 @@ def lookup(text, *, this_year, last_year,
         out.warnings.append("주소 파싱 실패")
         return out
 
-    # 빌라는 보통 단일 동이라 동(건물 101동 등)은 비워두고 호만 매칭에 사용.
-    # (아파트 단지처럼 동이 여러 개면 추후 parsed에서 동 추출 확장)
-    out.dong = None
-    out.ho = parsed.호
+    # 동·호: 명시적 인자(입력칸) 우선, 없으면 파싱 결과 사용.
+    #   (프론트가 동·호를 별도 필드로 넘기면 문자열 파싱에 의존하지 않음)
+    out.dong = (str(dong).strip() if dong else None) or parsed.건물동
+    out.ho = (str(ho).strip() if ho else None) or parsed.호
     out.warnings.extend(parsed.경고)
 
     # 2) 정제: 검색질의로 PNU 4요소 확보 (도로명이면 juso가 지번을 채움)
@@ -105,7 +107,7 @@ def lookup(text, *, this_year, last_year,
             out.warnings.append("여러 지역에 같은 동명 - 시/도·시군구를 함께 입력하세요")
         # 정제 실패 → 신뢰도 F로 마감
         c = score_confidence(refine_tier=0, has_jibun=bool(parsed.본번),
-                             has_ho=bool(parsed.호), warnings=out.warnings)
+                             has_ho=bool(out.ho), warnings=out.warnings)
         out.confidence_score, out.confidence_grade = c.score, c.grade
         out.needs_manual_check = c.needs_manual_check
         return out
@@ -205,7 +207,7 @@ def lookup(text, *, this_year, last_year,
     c = score_confidence(
         refine_tier=geo.tier,
         has_jibun=bool(parsed.본번),
-        has_ho=ho_matched or bool(parsed.호),
+        has_ho=ho_matched or bool(out.ho),
         registry_cross_checked=(routed.종류 == "등기고유번호"),
         warnings=out.warnings,
     )

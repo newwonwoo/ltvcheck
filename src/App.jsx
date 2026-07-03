@@ -81,7 +81,7 @@ export default function App() {
     const target = c["대표주소"] || [c["시도"], c["시군구"], c["읍면동"]].filter(Boolean).join(" ");
     setAddr(target);
     setRegions(null);
-    setTimeout(() => runWith(target), 0);
+    setTimeout(() => runWith(target, dong.trim(), ho.trim()), 0);
   }
 
   function pickSample(i) {
@@ -91,15 +91,15 @@ export default function App() {
   }
 
   async function run() {
-    const q = [addr, dong, ho].filter(Boolean).join(" ").trim();
+    const q = addr.trim();
     if (!q) {
       addrRef.current?.focus();
       return;
     }
-    runWith(q);
+    runWith(q, dong.trim(), ho.trim());
   }
 
-  async function runWith(query) {
+  async function runWith(query, d = "", h = "") {
     const q = (query || "").trim();
     if (!q) return;
     setLoading(true);
@@ -108,7 +108,7 @@ export default function App() {
       const res = await fetch("/api/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q }),
+        body: JSON.stringify({ q, dong: d, ho: h }),
       });
       if (!res.ok) {
         revealStatus("error", "조회를 마치지 못했어요", "조회 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
