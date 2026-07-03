@@ -33,7 +33,9 @@ class LookupResult:
     pnu: str = None
     dong: str = None
     ho: str = None
-    property_type: str = None  # "공동주택"(연립/다세대) | "오피스텔"
+    property_type: str = None  # "아파트"|"연립"|"다세대"|"오피스텔"
+    is_target: bool = True     # 이 서비스 대상 여부(아파트면 False)
+    needs_unit: bool = False   # 여러 세대라 동·호 입력이 필요함
     building_name: str = None  # 단지/건물명
     ambiguous: bool = False         # 동명이지(여러 행정구역) 여부
     region_candidates: list = None  # 동명이지 후보 [{시도,시군구,읍면동,pnu_prefix,대표주소}]
@@ -137,13 +139,34 @@ def lookup(text, *, this_year, last_year,
 
     # 채택: 신(this_year) 값이 나온 경로를 우선. 둘 다면 공동주택 우선.
     if apt_cur.price is not None:
-        out.property_type = "공동주택"
         prev, cur = apt_prev, apt_cur
         chosen = apt_cur.matched or (apt_cur.units[0] if apt_cur.units else None)
         out.building_name = getattr(chosen, "aphusNm", None)
         ho_matched = (apt_cur.matched is not None) or (apt_prev.matched is not None)
+
+        # VWorld 응답의 공동주택구분(아파트/연립/다세대)으로 실제 종류 판정
+        se = (getattr(chosen, "aphusSeCodeNm", None) or "").strip()
+        out.property_type = se or "공동주택"
+        out.is_target = ("아파트" not in se)
+    elif apt_cur.needs_unit:
+        # 여러 세대인데 동·호로 특정 못 함 → 값 내지 않고 동·호 요구
+        prev, cur = apt_prev, apt_cur
+        rep = apt_cur.units[0] if apt_cur.units else None
+        out.building_name = getattr(rep, "aphusNm", None)
+        se = (getattr(rep, "aphusSeCodeNm", None) or "").strip()
+        out.property_type = se or "공동주택"
+        out.is_target = ("아파트" not in se)
+        out.needs_unit = True
+        out.warnings.extend(apt_cur.warnings)
+        # 신뢰도만 매겨 조기 반환(값 없음 = 임의값 안 냄)
+        c = score_confidence(refine_tier=geo.tier, has_jibun=bool(parsed.본번),
+                             has_ho=False, warnings=out.warnings)
+        out.confidence_score, out.confidence_grade = c.score, c.grade
+        out.needs_manual_check = c.needs_manual_check
+        return out
     elif ofc_cur.price is not None:
         out.property_type = "오피스텔"
+        out.is_target = True
         prev, cur = ofc_prev, ofc_cur
         chosen = ofc_cur.matched or (ofc_cur.units[0] if ofc_cur.units else None)
         out.building_name = getattr(chosen, "building", None)

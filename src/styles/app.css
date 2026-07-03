@@ -273,3 +273,14 @@ body{
 .region-meta{font-size:12.5px;color:var(--ink-3);flex:1;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .region-arrow{color:var(--pine);flex:none;display:flex}
+
+/* 아파트(참고용) 타입 배지 */
+.res-type.apt{color:var(--ink-2);background:var(--paper-2)}
+
+/* 동·호 입력 필수 강조 (여러 세대일 때) */
+.addr-input.need{
+  border-color:var(--honey);
+  background:var(--honey-soft);
+  box-shadow:0 0 0 3px rgba(212,154,64,.15);
+}
+.addr-input.need::placeholder{color:var(--honey-2);font-weight:600}

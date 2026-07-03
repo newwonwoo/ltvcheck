@@ -79,8 +79,9 @@ class PriceResult:
     year: str = None
     units: list = field(default_factory=list)  # 조회된 세대들
     matched: UnitPrice = None   # 동/호로 특정된 세대(있으면)
-    price: int = None           # 대표 공시가격(matched 우선)
+    price: int = None           # 확정 공시가격(matched 또는 단일세대만)
     total_count: int = 0
+    needs_unit: bool = False    # 여러 세대라 동/호 입력이 필요함
     warnings: list = field(default_factory=list)
 
     @property
@@ -198,13 +199,21 @@ def fetch_price_by_pnu(pnu, year=None, *, dong=None, ho=None,
                 if d_ok and h_ok:
                     res.matched = u
                     break
-            if res.matched is None and len(res.units) > 1:
-                res.warnings.append(f"동/호 미매칭 - 후보 {len(res.units)}건")
 
-        chosen = res.matched or res.units[0]
-        res.price = chosen.price
-        if res.matched is None and (dong or ho):
-            res.warnings.append("호 특정 실패 - 첫 세대값 사용(주의)")
+        # 값 확정 규칙 (임의 대표세대 금지):
+        #  - 매칭된 세대가 있으면 그 값
+        #  - 매칭 없고 세대가 딱 1건이면 그 값(특정 불필요)
+        #  - 세대 여럿인데 특정 못 하면 값을 내지 않음 → 동/호 요구
+        if res.matched is not None:
+            res.price = res.matched.price
+        elif len(res.units) == 1:
+            res.price = res.units[0].price
+        else:
+            res.needs_unit = True  # 동/호 입력 필요 신호
+            if dong or ho:
+                res.warnings.append(f"동/호 미매칭 - 세대 {len(res.units)}건 중 특정 실패(동·호 확인 필요)")
+            else:
+                res.warnings.append(f"세대 {len(res.units)}건 - 동·호를 입력해야 특정 가능")
     except Exception as e:
         res.warnings.append(f"공시가격 호출 실패: {type(e).__name__}")
     return res

@@ -107,21 +107,25 @@ def _run(pnu):
     t1.update(_summarize(r1))
     tests.append(t1)
 
-    # 2) 공동주택가격 (도메인 없이)
-    p2 = {"pnu": pnu, "format": "json", "numOfRows": 10, "pageNo": 1,
-          "stdrYear": year, "key": key}
-    s2, r2 = _http_get("https://api.vworld.kr/ned/data/getApartHousingPriceAttr?" + urllib.parse.urlencode(p2))
-    t2 = {"name": "2. 공동주택가격 (도메인 없이)", "http": s2}
-    t2.update(_summarize(r2))
-    tests.append(t2)
-
-    # 3) 공동주택가격 (도메인 붙여서 — 있을 때만)
+    # 2) 공동주택가격 — domain 3종을 실제로 때려서 뭐가 통과하는지 확인
+    #    (개발키는 등록 서비스URL을 domain으로 넣어야 통과하는 경우가 있음)
+    domain_variants = [
+        ("도메인 없이", None),
+        ("domain=ltvcheck.vercel.app", "ltvcheck.vercel.app"),
+        ("domain=https://ltvcheck.vercel.app", "https://ltvcheck.vercel.app"),
+    ]
     if domain:
-        p3 = dict(p2); p3["domain"] = domain
-        s3, r3 = _http_get("https://api.vworld.kr/ned/data/getApartHousingPriceAttr?" + urllib.parse.urlencode(p3))
-        t3 = {"name": "3. 공동주택가격 (도메인 붙여서)", "http": s3}
-        t3.update(_summarize(r3))
-        tests.append(t3)
+        domain_variants.append((f"domain={domain} (환경변수)", domain))
+
+    for label, dv in domain_variants:
+        pv = {"pnu": pnu, "format": "json", "numOfRows": 10, "pageNo": 1,
+              "stdrYear": year, "key": key}
+        if dv:
+            pv["domain"] = dv
+        s, r = _http_get("https://api.vworld.kr/ned/data/getApartHousingPriceAttr?" + urllib.parse.urlencode(pv))
+        t = {"name": f"2. 공동주택가격 [{label}]", "http": s}
+        t.update(_summarize(r))
+        tests.append(t)
 
     # 4) 개별공시지가 (다른 데이터 API) — 데이터 API 전체 문제인지 격리
     p4 = {"pnu": pnu, "format": "json", "numOfRows": 5, "pageNo": 1,
@@ -145,31 +149,39 @@ def _run(pnu):
         return t is not None and "INCORRECT_KEY" in json.dumps(t, ensure_ascii=False)
 
     t_addr = find("주소검색")
-    t_apt = find("공동주택가격 (도메인 없이)") or find("공동주택가격")
     t_land = find("개별공시지가")
+    apt_tests = [t for t in tests if "공동주택가격" in t["name"]]
 
     addr_ok = is_ok(t_addr)
-    apt_ok = is_ok(t_apt)
-    apt_incorrect = is_incorrect(t_apt)
     land_ok = is_ok(t_land)
     land_incorrect = is_incorrect(t_land)
 
-    if apt_ok:
-        result["conclusion"] = "✅ 공동주택가격 API 정상. VWorld 문제 해결됨."
-    elif apt_incorrect and addr_ok and land_incorrect:
+    # 공동주택 domain 변형 중 통과한 게 있나?
+    passed = next((t for t in apt_tests if "정상" in t.get("outcome", "")), None)
+    all_apt_incorrect = all(is_incorrect(t) for t in apt_tests) if apt_tests else False
+
+    if passed:
+        # 통과한 domain 값을 추출해 추천
+        name = passed["name"]
+        if "도메인 없이" in name:
+            rec = "VWORLD_DOMAIN을 비워두세요(도메인 파라미터 안 보냄)."
+        elif "https://" in name:
+            rec = "VWORLD_DOMAIN = https://ltvcheck.vercel.app 로 설정하세요."
+        else:
+            rec = "VWORLD_DOMAIN = ltvcheck.vercel.app 로 설정하세요."
+        result["conclusion"] = f"✅ 공동주택가격 API 통과 조합 발견! [{name}] → {rec} 그 후 재배포."
+    elif all_apt_incorrect and addr_ok and land_incorrect:
         result["conclusion"] = (
-            "★ 주소검색은 되는데 데이터 API(공동주택·개별공시지가) 모두 INCORRECT_KEY. "
-            "→ 이 키에 '데이터 API(ned)' 활용이 포함되지 않았을 가능성이 큼. "
-            "VWorld 마이페이지 > 인증키 > 활용 API에 데이터 API가 있는지 확인하고, "
-            "없으면 그 키에 데이터 API를 추가(또는 데이터 API용 키 재발급).")
-    elif apt_incorrect and addr_ok and land_ok:
+            "★ 주소검색은 되나 모든 데이터 API가 INCORRECT_KEY. 활용API는 켜져 있으므로 "
+            "'개발키'라서 서버호출이 막혔을 가능성. → VWorld에서 '운영키 신청'으로 운영키를 "
+            "발급받아 VWORLD_API_KEY를 교체하세요. (개발키는 등록 도메인/브라우저 호출 전제)")
+    elif all_apt_incorrect and addr_ok and land_ok:
         result["conclusion"] = (
-            "★ 개별공시지가는 되는데 공동주택가격만 INCORRECT_KEY. "
-            "→ 이 특정 API만 문제. VWorld에 해당 API 활용신청/승인 상태 확인.")
+            "★ 개별공시지가는 되는데 공동주택가격만 모든 domain 조합에서 INCORRECT_KEY. "
+            "→ 공동주택가격 API 활용 승인/상태를 VWorld에서 재확인.")
     elif not addr_ok:
         result["conclusion"] = (
-            "★ 주소검색 API조차 실패 → 키 값 자체가 잘못됐거나 도메인 불일치. "
-            "키 재확인 필요. 도메인 미등록 키면 VWORLD_DOMAIN을 비우세요.")
+            "★ 주소검색 API조차 실패 → 키 값 자체 또는 도메인 불일치. 키 재확인.")
     else:
         result["conclusion"] = "혼합 결과 — 각 test의 outcome/raw를 확인하세요."
 

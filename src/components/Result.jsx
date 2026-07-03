@@ -8,6 +8,7 @@ export default function Result({ data, show, isSample }) {
   const delta = data.now - data.last;
   const pct = (delta / data.last) * 100;
   const hasCompare = data.last != null && data.now != null;
+  const isApt = data.isTarget === false || (data.type && data.type.includes("아파트"));
 
   return (
     <section className={"result" + (show ? " show" : "")} aria-live="polite">
@@ -15,8 +16,9 @@ export default function Result({ data, show, isSample }) {
         <div className="sample-badge">예시 데이터 — 실제 조회는 주소를 입력하세요</div>
       )}
       <div className="res-head">
-        <span className={"res-type " + (data.type === "오피스텔" ? "ofctl" : "gongdong")}>
+        <span className={"res-type " + (isApt ? "apt" : data.type === "오피스텔" ? "ofctl" : "gongdong")}>
           {data.typeKo}
+          {isApt ? " · 참고용" : ""}
         </span>
         <span className="res-addr">{data.addr}</span>
       </div>
@@ -50,21 +52,33 @@ export default function Result({ data, show, isSample }) {
         <span
           className="guide-icon"
           style={{
-            background: up ? "var(--honey-soft)" : "var(--rose-soft)",
-            color: up ? "var(--honey-2)" : "var(--rose-2)",
+            background: isApt ? "var(--paper-2)" : up ? "var(--honey-soft)" : "var(--rose-soft)",
+            color: isApt ? "var(--ink-2)" : up ? "var(--honey-2)" : "var(--rose-2)",
           }}
         >
-          {up ? "🌱" : "🍂"}
+          {isApt ? "ℹ️" : up ? "🌱" : "🍂"}
         </span>
         <div className="guide-text">
-          <p className="g-main">
-            {up ? "보증 범위가 늘어날 수 있어요" : "보증 범위가 줄어들 수 있어요"}
-          </p>
-          <p className="g-sub">
-            {up
-              ? "다만 공시가격이 오른 만큼 보증료가 함께 오를 수 있어요."
-              : "갱신 시 한도가 줄 수 있으니 미리 살펴 두면 좋아요."}
-          </p>
+          {isApt ? (
+            <>
+              <p className="g-main">아파트는 공시가로 한도를 정하지 않아요</p>
+              <p className="g-sub">
+                공시가격 변동은 위와 같지만, 아파트 전세보증 한도는 KB시세 기준으로
+                산정돼요. 이 공시가 변동이 한도에 그대로 반영되지는 않아요.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="g-main">
+                {up ? "보증 범위가 늘어날 수 있어요" : "보증 범위가 줄어들 수 있어요"}
+              </p>
+              <p className="g-sub">
+                {up
+                  ? "다만 공시가격이 오른 만큼 보증료가 함께 오를 수 있어요."
+                  : "갱신 시 한도가 줄 수 있으니 미리 살펴 두면 좋아요."}
+              </p>
+            </>
+          )}
         </div>
       </div>
 

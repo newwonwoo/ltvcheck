@@ -30,7 +30,7 @@ from .gongsiga import fetch_price_by_pnu, fetch_two_years, PriceResult, UnitPric
 from .officetel import fetch_officetel_by_pnu, OfficetelResult, OfficetelUnit
 from .pipeline import lookup, LookupResult
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"
 
 __all__ = [
     "build_pnu", "split_pnu", "normalize_mountain_flag",

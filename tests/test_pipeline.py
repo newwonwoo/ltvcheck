@@ -286,6 +286,33 @@ def test_geocode_cascade_strip_detail():
     assert r.ok and r.parts.to_pnu() == "1150010300105040032"
 
 
+def test_pipeline_multi_unit_requires_dongho():
+    """여러 세대인데 동·호 없으면 임의 대표값 안 내고 needs_unit."""
+    def juso_bldg(url, timeout=6):
+        return json.dumps({"results": {"common": {"errorCode": "0"}, "juso": [
+            {"admCd": "1153010700", "siNm": "서울", "sggNm": "구로구", "emdNm": "개봉동",
+             "roadAddr": "경인로 302", "jibunAddr": "개봉동 497",
+             "lnbrMnnm": "497", "lnbrSlno": "0", "mtYn": "0", "bdKdcd": "1"}]}}, ensure_ascii=False)
+
+    def apt_multi(url, timeout=6):
+        y = "2026" if "stdrYear=2026" in url else "2025"
+        base = 459000000 if y == "2026" else 442000000
+        fields = [{"pnu": "1153010700104970000", "aphusNm": "센트레빌", "aphusSeCodeNm": "아파트",
+                   "dongNm": "", "hoNm": str(101 + i), "floorNm": "", "prvuseAr": "84",
+                   "pblntfPc": str(base + i * 1000000), "stdrYear": y} for i in range(5)]
+        return json.dumps({"apartHousingPrices": {"totalCount": 5, "fields": {"field": fields}}}, ensure_ascii=False)
+
+    # 동·호 없음 → 값 없음 + needs_unit
+    out = lookup("서울 구로구 경인로 302", this_year="2026", last_year="2025",
+                 juso_http=juso_bldg, juso_key="D", gongsiga_http=apt_multi, gongsiga_key="D")
+    assert out.ok is False and out.price_this is None and out.needs_unit is True
+
+    # 호 지정 → 그 세대값
+    out2 = lookup("서울 구로구 경인로 302 103호", this_year="2026", last_year="2025",
+                  juso_http=juso_bldg, juso_key="D", gongsiga_http=apt_multi, gongsiga_key="D")
+    assert out2.ok and out2.price_this == 461000000 and not out2.needs_unit
+
+
 def _run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

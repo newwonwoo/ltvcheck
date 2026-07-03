@@ -15,15 +15,18 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [compact, setCompact] = useState(false);
   const [isSample, setIsSample] = useState(false);
+  const [unitNeeded, setUnitNeeded] = useState(false);
   const addrRef = useRef(null);
   const resultRef = useRef(null);
 
   // 백엔드(/api/lookup)가 돌려주는 LookupResult → 화면 데이터로 변환
   function adaptApiResult(r) {
     if (!r || !r.ok) return null;
+    const t = r.property_type || "공동주택";
     return {
-      type: r.property_type || "공동주택",
-      typeKo: r.property_type === "오피스텔" ? "오피스텔" : "연립·다세대",
+      type: t,
+      typeKo: t, // 실제 종류(아파트/연립/다세대/오피스텔) 그대로
+      isTarget: r.is_target !== false, // 아파트면 false
       addr: r.refined_address || "",
       name: r.building_name || "조회 결과",
       last: r.price_last,
@@ -37,6 +40,7 @@ export default function App() {
   function reveal(data, sample = false) {
     setStatus(null);
     setRegions(null);
+    setUnitNeeded(false);
     setResult(data);
     setIsSample(sample);
     setCompact(true);
@@ -118,9 +122,20 @@ export default function App() {
         revealRegions(json.region_candidates);
         return;
       }
+      // 여러 세대 → 동·호 입력 필수(임의 대표값 안 씀)
+      if (json.needs_unit) {
+        const nm = json.building_name || "이 건물";
+        revealStatus(
+          "empty",
+          "동·호를 입력해 주세요",
+          `‘${nm}’은(는) 세대가 여러 개예요. 정확한 공시가격은 세대마다 달라서, 동·호를 입력해야 특정할 수 있어요.`
+        );
+        setUnitNeeded(true);
+        return;
+      }
       const data = adaptApiResult(json);
       if (data && data.now != null) {
-        reveal(data); // 진짜 결과
+        reveal(data); // 아파트 포함 값은 항상 표시(안내 문구만 종류별로 다름)
       } else {
         const d = diagnose(json);
         revealStatus(d.kind, d.title, d.message, json);
@@ -223,11 +238,13 @@ export default function App() {
         </div>
         <div className="sub-row">
           <div className="col">
-            <input className="addr-input" type="text" autoComplete="off" placeholder="동 (선택)"
+            <input className={"addr-input" + (unitNeeded ? " need" : "")} type="text" autoComplete="off"
+              placeholder={unitNeeded ? "동 (예: 101)" : "동 (선택)"}
               value={dong} onChange={(e) => setDong(e.target.value)} />
           </div>
           <div className="col">
-            <input className="addr-input" type="text" autoComplete="off" placeholder="호 (선택)"
+            <input className={"addr-input" + (unitNeeded ? " need" : "")} type="text" autoComplete="off"
+              placeholder={unitNeeded ? "호 (예: 302) *필수" : "호 (선택)"}
               value={ho} onChange={(e) => setHo(e.target.value)} />
           </div>
         </div>
