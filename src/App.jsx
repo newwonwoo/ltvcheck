@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import Result from "./components/Result.jsx";
 import StatusCard from "./components/StatusCard.jsx";
 import RegionPicker from "./components/RegionPicker.jsx";
+import UnitPicker from "./components/UnitPicker.jsx";
 import { SAMPLES } from "./data/samples.js";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
   const [compact, setCompact] = useState(false);
   const [isSample, setIsSample] = useState(false);
   const [unitNeeded, setUnitNeeded] = useState(false);
+  const [unitList, setUnitList] = useState(null); // {name, units:[{dong,ho}], addr}
   const addrRef = useRef(null);
   const resultRef = useRef(null);
 
@@ -40,6 +42,7 @@ export default function App() {
   function reveal(data, sample = false) {
     setStatus(null);
     setRegions(null);
+    setUnitList(null);
     setUnitNeeded(false);
     setResult(data);
     setIsSample(sample);
@@ -54,6 +57,7 @@ export default function App() {
   function revealStatus(kind, title, message) {
     setResult(null);
     setRegions(null);
+    setUnitList(null);
     setStatus({ kind, title, message });
     setCompact(true);
     setShow(false);
@@ -76,6 +80,15 @@ export default function App() {
   }
 
   // 동명이지 후보를 고르면, 시/도·시군구를 앞에 붙여 재조회
+  function pickUnit(u) {
+    // 세대 목록에서 선택 → 동·호 채우고 그 세대로 재조회
+    setDong(u.dong || "");
+    setHo(u.ho || "");
+    setUnitList(null);
+    const q = (unitList?.addr || addr).trim();
+    setTimeout(() => runWith(q, (u.dong || "").trim(), (u.ho || "").trim()), 0);
+  }
+
   function pickRegion(c) {
     // 후보의 정확한 대표주소로 직접 조회(원래 입력을 재검색하면 또 같은 후보가 나옴)
     const target = c["대표주소"] || [c["시도"], c["시군구"], c["읍면동"]].filter(Boolean).join(" ");
@@ -120,15 +133,19 @@ export default function App() {
         revealRegions(json.region_candidates);
         return;
       }
-      // 여러 세대 → 동·호 입력 필수(임의 대표값 안 씀)
+      // 여러 세대 → 존재하는 동·호 목록을 보여주고 고르게 함(임의 대표값 안 씀)
       if (json.needs_unit) {
         const nm = json.building_name || "이 건물";
-        revealStatus(
-          "empty",
-          "동·호를 입력해 주세요",
-          `‘${nm}’은(는) 세대가 여러 개예요. 정확한 공시가격은 세대마다 달라서, 동·호를 입력해야 특정할 수 있어요.`
-        );
+        const units = json.available_units || [];
+        setUnitList({ name: nm, units, addr: json.refined_address || q });
+        setStatus(null);
+        setResult(null);
+        setRegions(null);
         setUnitNeeded(true);
+        requestAnimationFrame(() => {
+          setShow(true);
+          resultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
         return;
       }
       const data = adaptApiResult(json);
@@ -268,10 +285,12 @@ export default function App() {
 
       {/* 결과 / 상태 / 동명이지 후보 */}
       <div ref={resultRef}>
-        {regions ? (
+        {unitList ? (
+          <UnitPicker data={unitList} onPick={pickUnit} show={show} />
+        ) : regions ? (
           <RegionPicker regions={regions} onPick={pickRegion} show={show} />
         ) : status ? (
-          <StatusCard kind={status.kind} message={status.message} show={show} />
+          <StatusCard kind={status.kind} title={status.title} message={status.message} show={show} />
         ) : (
           <Result data={result} show={show} isSample={isSample} />
         )}

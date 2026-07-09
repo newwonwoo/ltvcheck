@@ -86,9 +86,22 @@ def score_confidence(*, refine_tier=None, has_jibun=False, has_ho=False,
         total += WEIGHTS["등기_교차검증"]
         c.signals["등기_교차검증"] = True
 
+    # 경고별 감점: '진짜 위험 신호'만 감점하고, 도로명주소에서 당연한 안내는 제외한다.
+    #  - 도로명주소는 등기부식 지번/호/읍면동 파싱이 원래 비므로 그 '미인식'은 정상.
+    #  - 중복 경고는 한 번만 반영.
+    BENIGN = (
+        "도로명주소", "호 미인식", "읍면동 미인식", "지번 미인식",
+        "호로만 특정", "동 구분이 없어",
+    )
+    seen = set()
     for w in (warnings or []):
+        if w in seen:
+            continue
+        seen.add(w)
         c.notes.append(w)
-        total -= 3  # 경고 하나당 소폭 감점
+        if any(b in w for b in BENIGN):
+            continue  # 정상 안내 → 감점 없음
+        total -= 3  # 진짜 경고만 소폭 감점
 
     total = max(0, min(100, total))
     c.score = total

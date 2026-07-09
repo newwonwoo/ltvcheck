@@ -409,6 +409,95 @@ def test_match_ho_only_when_no_dong():
     assert not r2.ok and r2.needs_unit
 
 
+def test_confidence_road_address_with_ho_is_B():
+    """도로명주소로 호까지 특정되면(센트레빌 105/1403) 신뢰도 B 이상."""
+    import json as _j
+    from jeonse_pnu import lookup
+
+    def juso(url, timeout=5):
+        j = {"admCd": "1153010700", "siNm": "서울", "sggNm": "구로구", "emdNm": "개봉동",
+             "roadAddr": "경인로 302", "jibunAddr": "개봉동 497", "lnbrMnnm": "497",
+             "lnbrSlno": "0", "mtYn": "0", "bdKdcd": "1"}
+        return _j.dumps({"results": {"common": {"errorCode": "0"}, "juso": [j]}}, ensure_ascii=False)
+
+    def vw(url, timeout=6):
+        y = "2026" if "stdrYear=2026" in url else "2025"
+        p = 510000000 if y == "2026" else 491000000
+        fields = [{"pnu": "1153010700104970000", "aphusNm": "센트레빌", "aphusSeCodeNm": "아파트",
+                   "dongNm": "", "hoNm": h, "floorNm": "14", "prvuseAr": "84",
+                   "pblntfPc": str(p), "stdrYear": y} for h in ["1401", "1402", "1403"]]
+        return _j.dumps({"apartHousingPrices": {"totalCount": 3, "fields": {"field": fields}}}, ensure_ascii=False)
+
+    out = lookup("서울특별시 구로구 경인로 302", this_year="2026", last_year="2025",
+                 dong="105", ho="1403", juso_http=juso, juso_key="D", gongsiga_http=vw, gongsiga_key="D")
+    assert out.price_this == 510000000
+    assert out.confidence_grade in ("A", "B"), f"C가 아니라 B 이상이어야: {out.confidence_grade}"
+    assert out.confidence_score >= 65
+
+
+def test_building_name_search():
+    """건물명만 입력해도(지번 없이) juso 건물명 검색으로 정제된다."""
+    import json as _j
+    from jeonse_pnu import lookup
+
+    captured = []
+
+    def juso(url, timeout=5):
+        import urllib.parse as up
+        q = up.parse_qs(up.urlparse(url).query).get("keyword", [""])[0]
+        captured.append(q)
+        if "진오피스텔" in q:
+            j = {"admCd": "1153010200", "siNm": "서울특별시", "sggNm": "구로구", "emdNm": "구로동",
+                 "roadAddr": "구로중앙로 152", "jibunAddr": "구로동 100 진오피스텔",
+                 "lnbrMnnm": "100", "lnbrSlno": "0", "mtYn": "0", "bdKdcd": "1"}
+            return _j.dumps({"results": {"common": {"errorCode": "0"}, "juso": [j]}}, ensure_ascii=False)
+        return _j.dumps({"results": {"common": {"errorCode": "0"}, "juso": []}}, ensure_ascii=False)
+
+    def vw(url, timeout=6):
+        return _j.dumps({"apartHousingPrices": {"totalCount": 0, "fields": {"field": []}}}, ensure_ascii=False)
+
+    # 건물명만 → juso 검색어에 건물명이 살아있어야
+    out = lookup("서울특별시 구로구 진오피스텔", this_year="2026", last_year="2025",
+                 juso_http=juso, juso_key="D", gongsiga_http=vw, gongsiga_key="D")
+    assert any("진오피스텔" in q for q in captured), "건물명이 juso 검색어에 있어야"
+    assert out.pnu, "건물명 검색으로 PNU가 조립돼야"
+
+    # 건물명 + 별도 동/호 → 검색어는 건물명만(동/호 오염 없음)
+    captured.clear()
+    lookup("서울특별시 구로구 진오피스텔", this_year="2026", last_year="2025",
+           dong="105", ho="201", juso_http=juso, juso_key="D", gongsiga_http=vw, gongsiga_key="D")
+    assert all("201" not in q and "105" not in q for q in captured)
+
+
+def test_available_units_returned():
+    """여러 세대일 때 존재하는 동·호 목록을 available_units로 반환한다."""
+    import json as _j
+    from jeonse_pnu import lookup
+
+    def juso(url, timeout=5):
+        j = {"admCd": "1153010700", "siNm": "서울", "sggNm": "구로구", "emdNm": "개봉동",
+             "roadAddr": "경인로38길 13", "jibunAddr": "개봉동 500", "lnbrMnnm": "500",
+             "lnbrSlno": "0", "mtYn": "0", "bdKdcd": "1"}
+        return _j.dumps({"results": {"common": {"errorCode": "0"}, "juso": [j]}}, ensure_ascii=False)
+
+    def vw(url, timeout=6):
+        y = "2026" if "stdrYear=2026" in url else "2025"
+        fields = [{"pnu": "P", "aphusNm": "신개봉삼환", "aphusSeCodeNm": "아파트",
+                   "dongNm": d, "hoNm": h, "floorNm": "1", "prvuseAr": "84",
+                   "pblntfPc": "500000000", "stdrYear": y}
+                  for d in ["101", "102"] for h in ["101", "1403"]]
+        return _j.dumps({"apartHousingPrices": {"totalCount": 4, "fields": {"field": fields}}}, ensure_ascii=False)
+
+    out = lookup("서울특별시 구로구 경인로38길 13", this_year="2026", last_year="2025",
+                 juso_http=juso, juso_key="D", gongsiga_http=vw, gongsiga_key="D")
+    assert out.needs_unit is True
+    d = out.to_dict()
+    assert len(d["available_units"]) == 4
+    # 동→호 순 정렬 확인
+    assert d["available_units"][0] == {"dong": "101", "ho": "101"}
+    assert d["available_units"][-1] == {"dong": "102", "ho": "1403"}
+
+
 def _run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

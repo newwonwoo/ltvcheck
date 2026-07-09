@@ -284,3 +284,18 @@ body{
   box-shadow:0 0 0 3px rgba(212,154,64,.15);
 }
 .addr-input.need::placeholder{color:var(--honey-2);font-weight:600}
+
+/* 세대(동·호) 선택 */
+.unit-pick{background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 16px rgba(46,90,78,.06)}
+.unit-head{display:flex;gap:12px;align-items:flex-start;margin-bottom:18px}
+.unit-icon{font-size:22px;flex-shrink:0}
+.unit-title{font-weight:700;font-size:17px;color:var(--ink);margin:0 0 4px}
+.unit-sub{font-size:13px;color:var(--ink-2);line-height:1.5;margin:0}
+.unit-block{margin-top:16px}
+.unit-label{font-size:12px;font-weight:600;color:var(--ink-2);margin:0 0 8px}
+.unit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px}
+.unit-btn{padding:11px 8px;border:1.5px solid var(--line);border-radius:12px;background:#fff;
+  font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;transition:all .12s}
+.unit-btn:hover{border-color:var(--pine);background:var(--pine-soft)}
+.unit-btn.on{border-color:var(--pine);background:var(--pine);color:#fff}
+.unit-btn.ho:hover{border-color:var(--honey);background:var(--honey-soft);color:var(--honey-2)}

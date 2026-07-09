@@ -45,6 +45,7 @@ class LookupResult:
     confidence_score: int = 0
     confidence_grade: str = "F"
     needs_manual_check: bool = True
+    available_units: list = None  # 여러 세대일 때 존재하는 동·호 목록
     warnings: list = None
 
     def __post_init__(self):
@@ -52,9 +53,59 @@ class LookupResult:
             self.warnings = []
         if self.region_candidates is None:
             self.region_candidates = []
+        if self.available_units is None:
+            self.available_units = []
 
     def to_dict(self):
         return asdict(self)
+
+
+def _unit_list(units, *, dong_attr="dongNm", ho_attr="hoNm"):
+    """
+    VWorld/오피스텔 세대 목록을 프론트 표시용으로 정리.
+    반환: [{"dong": "101", "ho": "1403"}...] 동→호 순 정렬, 중복 제거.
+    동 정보가 비어있으면 dong은 빈 문자열(호만 목록).
+    """
+    seen = set()
+    out = []
+    for u in units or []:
+        d = (getattr(u, dong_attr, None) or "").strip()
+        h = (getattr(u, ho_attr, None) or "").strip()
+        key = (d, h)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"dong": d, "ho": h})
+
+    def sort_key(x):
+        # 숫자 우선 정렬(101 < 102 < 1403), 숫자 아니면 문자열
+        def num(s):
+            import re as _r
+            m = _r.findall(r"\d+", s)
+            return (0, int(m[0])) if m else (1, s)
+        return (num(x["dong"]), num(x["ho"]))
+
+    out.sort(key=sort_key)
+    return out
+
+
+def _strip_unit_tail(text, dong, ho):
+    """
+    건물명 검색용: 사용자가 별도 필드로 넣은 동·호가 원문 끝에 붙어있으면 제거.
+    (예: 프론트가 q에 '구로구 진오피스텔', dong/ho에 '105'/'201'을 넣었는데
+     원문에 그게 안 섞였으면 그대로, 섞였으면 떼어 건물명만 남긴다.)
+    """
+    s = " ".join((text or "").split())
+    for v in (ho, dong):
+        if not v:
+            continue
+        v = str(v).strip()
+        # "105", "105동", "201호" 형태를 끝에서 제거
+        for suf in (v + "호", v + "동", v):
+            if s.endswith(suf):
+                s = s[: -len(suf)].strip()
+                break
+    return s
 
 
 def lookup(text, *, this_year, last_year,
@@ -93,8 +144,16 @@ def lookup(text, *, this_year, last_year,
     out.ho = (str(ho).strip() if ho else None) or parsed.호
     out.warnings.extend(parsed.경고)
 
-    # 2) 정제: 검색질의로 PNU 4요소 확보 (도로명이면 juso가 지번을 채움)
-    query = parsed.검색질의 or routed.원본
+    # 2) 정제: juso로 PNU 4요소 확보
+    #   - 지번(본번)이 있으면 파서의 검색질의 사용(불필요한 상세 제거)
+    #   - 지번이 없으면(건물명만 입력한 경우) 원문을 그대로 넘긴다.
+    #     juso는 건물명 검색을 지원하므로 "구로구 진오피스텔" 같은 입력도 정제됨.
+    #     (파서 검색질의는 건물명을 지번으로 못 봐 떨궈버리므로 원문이 정확)
+    if parsed.본번:
+        query = parsed.검색질의 or routed.원본
+    else:
+        # 동·호 상세만 떼고 건물명은 유지한 채 원문 사용
+        query = _strip_unit_tail(routed.원본, out.dong, out.ho) or routed.원본
     geo = geocode(query, juso_http=juso_http, kakao_http=kakao_http,
                   juso_key=juso_key, kakao_key=kakao_key)
     out.warnings.extend(geo.warnings)
@@ -159,6 +218,7 @@ def lookup(text, *, this_year, last_year,
         out.property_type = se or "공동주택"
         out.is_target = ("아파트" not in se)
         out.needs_unit = True
+        out.available_units = _unit_list(apt_cur.units)
         out.warnings.extend(apt_cur.warnings)
         # 신뢰도만 매겨 조기 반환(값 없음 = 임의값 안 냄)
         c = score_confidence(refine_tier=geo.tier, has_jibun=bool(parsed.본번),
@@ -181,6 +241,7 @@ def lookup(text, *, this_year, last_year,
         out.is_target = True
         out.building_name = getattr(rep, "building", None)
         out.needs_unit = True
+        out.available_units = _unit_list(ofc_cur.units, dong_attr="dong", ho_attr="ho")
         out.warnings.extend(ofc_cur.warnings)
         c = score_confidence(refine_tier=geo.tier, has_jibun=bool(parsed.본번),
                              has_ho=False, warnings=out.warnings)
@@ -204,9 +265,12 @@ def lookup(text, *, this_year, last_year,
         out.warnings.append("구 공시가 없음 - 변동 비교 불가(현재값만)")
 
     # 5) 신뢰도
+    #    has_jibun은 '정제 결과(geo.parts)에 본번이 있는가'로 판단한다.
+    #    (도로명주소는 등기부 파싱(parsed.본번)엔 지번이 없지만, juso 정제로 지번이 확보됨)
+    refined_bonbun = bool(getattr(geo.parts, "본번", None)) or bool(out.pnu)
     c = score_confidence(
         refine_tier=geo.tier,
-        has_jibun=bool(parsed.본번),
+        has_jibun=refined_bonbun,
         has_ho=ho_matched or bool(out.ho),
         registry_cross_checked=(routed.종류 == "등기고유번호"),
         warnings=out.warnings,
