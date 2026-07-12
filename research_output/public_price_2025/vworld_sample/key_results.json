@@ -1,0 +1,929 @@
+{
+  "source": {
+    "official_csv": "국토교통부_주택 공시가격 정보_20250626",
+    "official_csv_reference_date": "2025-01-01",
+    "official_csv_rows": 15580435,
+    "vworld_endpoint": "getApartHousingPriceAttr",
+    "vworld_year": "2025",
+    "villa_type_codes": {
+      "3": "연립",
+      "5": "다세대"
+    }
+  },
+  "screened_frame": {
+    "source": "https://raw.githubusercontent.com/kimyejoon/K-Bjd-OpenLib/main/raw_data/bjd_code_20250805.csv",
+    "source_role": "법정동 후보 목록만 사용; 가격·면적·주택유형은 VWorld 공식 API 사용",
+    "vworld_endpoint": "https://ltvcheck.vercel.app/api/vworld-page",
+    "year": "2025",
+    "seed": 20250712,
+    "candidate_sampling": [
+      {
+        "region_group": "서울",
+        "active_leaf_legal_dongs": 467,
+        "screened_dongs": 120,
+        "stage1_probability": 0.2569593147751606
+      },
+      {
+        "region_group": "수도권(경기·인천)",
+        "active_leaf_legal_dongs": 2280,
+        "screened_dongs": 120,
+        "stage1_probability": 0.05263157894736842
+      },
+      {
+        "region_group": "지방",
+        "active_leaf_legal_dongs": 16111,
+        "screened_dongs": 120,
+        "stage1_probability": 0.007448327229842964
+      }
+    ],
+    "screened_total": 360,
+    "screen_success": 360,
+    "eligible_total": 159,
+    "eligible_by_region": {
+      "서울": 86,
+      "수도권(경기·인천)": 51,
+      "지방": 22
+    },
+    "eligibility": {
+      "min_communal_housing_units": 100,
+      "max_communal_housing_units": 200000,
+      "reason_for_upper_bound": "API 호출량 통제; 표본 결과의 외삽 한계로 명시"
+    }
+  },
+  "sample_design": {
+    "method": "1단계 지역별 active leaf 법정동 단순무작위 스크리닝, 2단계 VWorld 공동주택 총호수 3분위별 단순무작위",
+    "seed": 20250712,
+    "target_per_region_size_stratum": 4,
+    "selected_dongs": 36,
+    "expected_api_pages_from_csv": 463,
+    "actual_api_pages": 463,
+    "strata": [
+      {
+        "region_group": "서울",
+        "size_stratum": "low",
+        "population_dongs": 29,
+        "sampled_dongs": 4,
+        "sampling_probability": 0.13793103,
+        "min_units": 330,
+        "max_units": 3344
+      },
+      {
+        "region_group": "서울",
+        "size_stratum": "mid",
+        "population_dongs": 28,
+        "sampled_dongs": 4,
+        "sampling_probability": 0.14285714,
+        "min_units": 3724,
+        "max_units": 16662
+      },
+      {
+        "region_group": "서울",
+        "size_stratum": "high",
+        "population_dongs": 29,
+        "sampled_dongs": 4,
+        "sampling_probability": 0.13793103,
+        "min_units": 16850,
+        "max_units": 139969
+      },
+      {
+        "region_group": "수도권(경기·인천)",
+        "size_stratum": "low",
+        "population_dongs": 17,
+        "sampled_dongs": 4,
+        "sampling_probability": 0.23529412,
+        "min_units": 100,
+        "max_units": 1090
+      },
+      {
+        "region_group": "수도권(경기·인천)",
+        "size_stratum": "mid",
+        "population_dongs": 17,
+        "sampled_dongs": 4,
+        "sampling_probability": 0.23529412,
+        "min_units": 1630,
+        "max_units": 12662
+      },
+      {
+        "region_group": "수도권(경기·인천)",
+        "size_stratum": "high",
+        "population_dongs": 17,
+        "sampled_dongs": 4,
+        "sampling_probability": 0.23529412,
+        "min_units": 14320,
+        "max_units": 92188
+      },
+      {
+        "region_group": "지방",
+        "size_stratum": "low",
+        "population_dongs": 7,
+        "sampled_dongs": 4,
+        "sampling_probability": 0.57142857,
+        "min_units": 106,
+        "max_units": 1158
+      },
+      {
+        "region_group": "지방",
+        "size_stratum": "mid",
+        "population_dongs": 8,
+        "sampled_dongs": 4,
+        "sampling_probability": 0.5,
+        "min_units": 1442,
+        "max_units": 5054
+      },
+      {
+        "region_group": "지방",
+        "size_stratum": "high",
+        "population_dongs": 7,
+        "sampled_dongs": 4,
+        "sampling_probability": 0.57142857,
+        "min_units": 9274,
+        "max_units": 40204
+      }
+    ],
+    "sampled_dongs_with_at_least_5_villas": 32,
+    "villa_rows_before_n5_filter": 59188,
+    "villa_rows_analyzed": 59188,
+    "duplicates_removed": 57974,
+    "excluded_dongs_under_5_villas": 4
+  },
+  "cleaning": {
+    "excluded": [
+      "전용면적<=0",
+      "공시가격<=0",
+      "주택유형코드가 3·5가 아님",
+      "법정동 내 연립·다세대 5호 미만"
+    ],
+    "main_outlier_policy": "상단 절단 없음",
+    "sensitivity": "전체 표본 단가 0.1~99.9% 범위만 남긴 Q1 별도 계산"
+  },
+  "q1": [
+    {
+      "region_group": "서울",
+      "sampled_eligible_dongs": 10,
+      "villa_households": 41491,
+      "weighted_median_cv": 0.34792679,
+      "weighted_p25_cv": 0.305016,
+      "weighted_p75_cv": 0.40875258,
+      "weighted_share_cv_lt_0_2": 0.2027972,
+      "weighted_share_cv_ge_0_4": 0.2972028,
+      "weighted_median_iqr_to_median": 0.56782802,
+      "weighted_median_p10p90_to_median": 0.88530651,
+      "weighted_median_p90_p10_ratio": 2.60642967,
+      "household_weighted_mean_cv": 0.3882571
+    },
+    {
+      "region_group": "수도권(경기·인천)",
+      "sampled_eligible_dongs": 11,
+      "villa_households": 12464,
+      "weighted_median_cv": 0.42285135,
+      "weighted_p25_cv": 0.19224093,
+      "weighted_p75_cv": 0.46099694,
+      "weighted_share_cv_lt_0_2": 0.27272727,
+      "weighted_share_cv_ge_0_4": 0.54545455,
+      "weighted_median_iqr_to_median": 0.46274201,
+      "weighted_median_p10p90_to_median": 1.08134811,
+      "weighted_median_p90_p10_ratio": 2.73367284,
+      "household_weighted_mean_cv": 0.38871891
+    },
+    {
+      "region_group": "지방",
+      "sampled_eligible_dongs": 11,
+      "villa_households": 5233,
+      "weighted_median_cv": 0.24416823,
+      "weighted_p25_cv": 0.0898513,
+      "weighted_p75_cv": 0.41534117,
+      "weighted_share_cv_lt_0_2": 0.44444444,
+      "weighted_share_cv_ge_0_4": 0.35802469,
+      "weighted_median_iqr_to_median": 0.23191197,
+      "weighted_median_p10p90_to_median": 0.47961196,
+      "weighted_median_p90_p10_ratio": 1.7123296,
+      "household_weighted_mean_cv": 0.37881562
+    },
+    {
+      "region_group": "전국",
+      "sampled_eligible_dongs": 32,
+      "villa_households": 59188,
+      "weighted_median_cv": 0.3392418,
+      "weighted_p25_cv": 0.12275569,
+      "weighted_p75_cv": 0.4290832,
+      "weighted_share_cv_lt_0_2": 0.38787976,
+      "weighted_share_cv_ge_0_4": 0.3965193,
+      "weighted_median_iqr_to_median": 0.23586127,
+      "weighted_median_p10p90_to_median": 0.66480908,
+      "weighted_median_p90_p10_ratio": 1.73619986,
+      "household_weighted_mean_cv": 0.38489873
+    }
+  ],
+  "q1_sensitivity": {
+    "trim_bounds": [
+      435445.61165707,
+      14164648.91041162
+    ],
+    "q1": [
+      {
+        "region_group": "서울",
+        "sampled_eligible_dongs": 10,
+        "villa_households": 41432,
+        "weighted_median_cv": 0.34671242,
+        "weighted_p25_cv": 0.305016,
+        "weighted_p75_cv": 0.3895927,
+        "weighted_share_cv_lt_0_2": 0.2027972,
+        "weighted_share_cv_ge_0_4": 0.1993007,
+        "weighted_median_iqr_to_median": 0.56782802,
+        "weighted_median_p10p90_to_median": 0.88254883,
+        "weighted_median_p90_p10_ratio": 2.58013525,
+        "household_weighted_mean_cv": 0.38240391
+      },
+      {
+        "region_group": "수도권(경기·인천)",
+        "sampled_eligible_dongs": 11,
+        "villa_households": 12462,
+        "weighted_median_cv": 0.42285135,
+        "weighted_p25_cv": 0.19224093,
+        "weighted_p75_cv": 0.46099694,
+        "weighted_share_cv_lt_0_2": 0.27272727,
+        "weighted_share_cv_ge_0_4": 0.54545455,
+        "weighted_median_iqr_to_median": 0.46274201,
+        "weighted_median_p10p90_to_median": 1.08134811,
+        "weighted_median_p90_p10_ratio": 2.73367284,
+        "household_weighted_mean_cv": 0.38861334
+      },
+      {
+        "region_group": "지방",
+        "sampled_eligible_dongs": 10,
+        "villa_households": 5177,
+        "weighted_median_cv": 0.2486742,
+        "weighted_p25_cv": 0.13451699,
+        "weighted_p75_cv": 0.42122273,
+        "weighted_share_cv_lt_0_2": 0.49315068,
+        "weighted_share_cv_ge_0_4": 0.30136986,
+        "weighted_median_iqr_to_median": 0.22184079,
+        "weighted_median_p10p90_to_median": 0.57716633,
+        "weighted_median_p90_p10_ratio": 1.70999169,
+        "household_weighted_mean_cv": 0.37521481
+      },
+      {
+        "region_group": "전국",
+        "sampled_eligible_dongs": 31,
+        "villa_households": 59071,
+        "weighted_median_cv": 0.30318021,
+        "weighted_p25_cv": 0.13507125,
+        "weighted_p75_cv": 0.43716209,
+        "weighted_share_cv_lt_0_2": 0.41667718,
+        "weighted_share_cv_ge_0_4": 0.35346323,
+        "weighted_median_iqr_to_median": 0.25815528,
+        "weighted_median_p10p90_to_median": 0.7119,
+        "weighted_median_p90_p10_ratio": 1.80744758,
+        "household_weighted_mean_cv": 0.3815888
+      }
+    ]
+  },
+  "q2_area_bins": [
+    {
+      "region_group": "서울",
+      "area_bin": "01_~30",
+      "n": 9397,
+      "weighted_mean_area": 24.83801077,
+      "weighted_mean_unit_price": 5828407.67512664,
+      "weighted_median_unit_price": 5539033.45724907
+    },
+    {
+      "region_group": "서울",
+      "area_bin": "02_30~45",
+      "n": 9245,
+      "weighted_mean_area": 38.80454707,
+      "weighted_mean_unit_price": 4228313.20975809,
+      "weighted_median_unit_price": 4077186.43012761
+    },
+    {
+      "region_group": "서울",
+      "area_bin": "03_45~60",
+      "n": 13695,
+      "weighted_mean_area": 52.93739272,
+      "weighted_mean_unit_price": 3906096.35042999,
+      "weighted_median_unit_price": 3665768.19407008
+    },
+    {
+      "region_group": "서울",
+      "area_bin": "04_60~85",
+      "n": 7409,
+      "weighted_mean_area": 71.46383391,
+      "weighted_mean_unit_price": 3432440.52337644,
+      "weighted_median_unit_price": 3179802.05405889
+    },
+    {
+      "region_group": "서울",
+      "area_bin": "05_85~",
+      "n": 1745,
+      "weighted_mean_area": 123.25157702,
+      "weighted_mean_unit_price": 3997099.20628075,
+      "weighted_median_unit_price": 3697217.35746254
+    },
+    {
+      "region_group": "수도권(경기·인천)",
+      "area_bin": "01_~30",
+      "n": 1930,
+      "weighted_mean_area": 21.35661658,
+      "weighted_mean_unit_price": 2272705.61074167,
+      "weighted_median_unit_price": 2072132.55820934
+    },
+    {
+      "region_group": "수도권(경기·인천)",
+      "area_bin": "02_30~45",
+      "n": 3260,
+      "weighted_mean_area": 39.35158589,
+      "weighted_mean_unit_price": 1290970.53994581,
+      "weighted_median_unit_price": 1134613.68507103
+    },
+    {
+      "region_group": "수도권(경기·인천)",
+      "area_bin": "03_45~60",
+      "n": 4623,
+      "weighted_mean_area": 53.44387627,
+      "weighted_mean_unit_price": 1299138.92494507,
+      "weighted_median_unit_price": 1060400.40719376
+    },
+    {
+      "region_group": "수도권(경기·인천)",
+      "area_bin": "04_60~85",
+      "n": 1963,
+      "weighted_mean_area": 71.0619511,
+      "weighted_mean_unit_price": 1678079.58726216,
+      "weighted_median_unit_price": 1246612.46612466
+    },
+    {
+      "region_group": "수도권(경기·인천)",
+      "area_bin": "05_85~",
+      "n": 688,
+      "weighted_mean_area": 127.6928343,
+      "weighted_mean_unit_price": 4420156.98348352,
+      "weighted_median_unit_price": 5790139.06447535
+    },
+    {
+      "region_group": "지방",
+      "area_bin": "01_~30",
+      "n": 292,
+      "weighted_mean_area": 22.76918932,
+      "weighted_mean_unit_price": 1419984.98368405,
+      "weighted_median_unit_price": 1182074.18879967
+    },
+    {
+      "region_group": "지방",
+      "area_bin": "02_30~45",
+      "n": 617,
+      "weighted_mean_area": 39.64355126,
+      "weighted_mean_unit_price": 957636.26808844,
+      "weighted_median_unit_price": 677784.70088937
+    },
+    {
+      "region_group": "지방",
+      "area_bin": "03_45~60",
+      "n": 1406,
+      "weighted_mean_area": 53.785419,
+      "weighted_mean_unit_price": 1240166.2402666,
+      "weighted_median_unit_price": 1122840.44521876
+    },
+    {
+      "region_group": "지방",
+      "area_bin": "04_60~85",
+      "n": 2705,
+      "weighted_mean_area": 74.54633807,
+      "weighted_mean_unit_price": 1850972.44836466,
+      "weighted_median_unit_price": 1428004.76001587
+    },
+    {
+      "region_group": "지방",
+      "area_bin": "05_85~",
+      "n": 213,
+      "weighted_mean_area": 134.65258129,
+      "weighted_mean_unit_price": 3000464.1230078,
+      "weighted_median_unit_price": 2531436.71059134
+    },
+    {
+      "region_group": "전국",
+      "area_bin": "01_~30",
+      "n": 11619,
+      "weighted_mean_area": 23.43194032,
+      "weighted_mean_unit_price": 4066830.6583473,
+      "weighted_median_unit_price": 4057352.04392922
+    },
+    {
+      "region_group": "전국",
+      "area_bin": "02_30~45",
+      "n": 13122,
+      "weighted_mean_area": 39.20921696,
+      "weighted_mean_unit_price": 2337497.02824337,
+      "weighted_median_unit_price": 1396937.57361602
+    },
+    {
+      "region_group": "전국",
+      "area_bin": "03_45~60",
+      "n": 19724,
+      "weighted_mean_area": 53.3760328,
+      "weighted_mean_unit_price": 2183772.96812264,
+      "weighted_median_unit_price": 1390635.91893781
+    },
+    {
+      "region_group": "전국",
+      "area_bin": "04_60~85",
+      "n": 12077,
+      "weighted_mean_area": 73.3750128,
+      "weighted_mean_unit_price": 2145413.70485648,
+      "weighted_median_unit_price": 1900302.9468466
+    },
+    {
+      "region_group": "전국",
+      "area_bin": "05_85~",
+      "n": 2646,
+      "weighted_mean_area": 128.58225907,
+      "weighted_mean_unit_price": 3822900.34484711,
+      "weighted_median_unit_price": 3871916.58711406
+    }
+  ],
+  "q2_regression": [
+    {
+      "region_group": "서울",
+      "n": 41491,
+      "pooled_slope_won_per_m2_unitprice_per_extra_m2": -20909.23699195,
+      "pooled_corr": -0.25655429,
+      "legal_dong_fixed_effect_slope": -29878.54969959,
+      "legal_dong_fixed_effect_corr": -0.389402
+    },
+    {
+      "region_group": "수도권(경기·인천)",
+      "n": 12464,
+      "pooled_slope_won_per_m2_unitprice_per_extra_m2": 15453.2022923,
+      "pooled_corr": 0.31510818,
+      "legal_dong_fixed_effect_slope": 8782.37790787,
+      "legal_dong_fixed_effect_corr": 0.24814189
+    },
+    {
+      "region_group": "지방",
+      "n": 5233,
+      "pooled_slope_won_per_m2_unitprice_per_extra_m2": 20427.15105501,
+      "pooled_corr": 0.46012934,
+      "legal_dong_fixed_effect_slope": 11331.09283743,
+      "legal_dong_fixed_effect_corr": 0.32510611
+    },
+    {
+      "region_group": "전국",
+      "n": 59188,
+      "pooled_slope_won_per_m2_unitprice_per_extra_m2": -4228.77079325,
+      "pooled_corr": -0.05450244,
+      "legal_dong_fixed_effect_slope": -4195.81702572,
+      "legal_dong_fixed_effect_corr": -0.07791692
+    }
+  ],
+  "q3_threshold_158730159": [
+    {
+      "n": 41491,
+      "mape": 0.33407243,
+      "median_ape": 0.25513276,
+      "p90_ape": 0.70871789,
+      "overall_misclassification": 0.29742842,
+      "false_negative_rate": 0.24759418,
+      "false_positive_rate": 0.37522141,
+      "model": "동네 중위단가 1개",
+      "region_group": "서울",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 1
+    },
+    {
+      "n": 12464,
+      "mape": 0.29129905,
+      "median_ape": 0.21455224,
+      "p90_ape": 0.60209598,
+      "overall_misclassification": 0.04821887,
+      "false_negative_rate": 0.22125297,
+      "false_positive_rate": 0.0287423,
+      "model": "동네 중위단가 1개",
+      "region_group": "수도권(경기·인천)",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 1
+    },
+    {
+      "n": 5233,
+      "mape": 0.25664974,
+      "median_ape": 0.18676864,
+      "p90_ape": 0.55047818,
+      "overall_misclassification": 0.15303374,
+      "false_negative_rate": 0.4850686,
+      "false_positive_rate": 0.05441594,
+      "model": "동네 중위단가 1개",
+      "region_group": "지방",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 1
+    },
+    {
+      "n": 59188,
+      "mape": 0.29289225,
+      "median_ape": 0.22077867,
+      "p90_ape": 0.60369692,
+      "overall_misclassification": 0.17098738,
+      "false_negative_rate": 0.30807775,
+      "false_positive_rate": 0.10653698,
+      "model": "동네 중위단가 1개",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 1
+    },
+    {
+      "n": 41491,
+      "mape": 0.36424842,
+      "median_ape": 0.26838877,
+      "p90_ape": 0.7920347,
+      "overall_misclassification": 0.30555049,
+      "false_negative_rate": 0.20994755,
+      "false_positive_rate": 0.45479002,
+      "model": "동네 평균단가 1개",
+      "region_group": "서울",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 1
+    },
+    {
+      "n": 12464,
+      "mape": 0.33878471,
+      "median_ape": 0.26969299,
+      "p90_ape": 0.73785827,
+      "overall_misclassification": 0.05479782,
+      "false_negative_rate": 0.13164155,
+      "false_positive_rate": 0.04614835,
+      "model": "동네 평균단가 1개",
+      "region_group": "수도권(경기·인천)",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 1
+    },
+    {
+      "n": 5233,
+      "mape": 0.34983601,
+      "median_ape": 0.31592371,
+      "p90_ape": 0.68724865,
+      "overall_misclassification": 0.16541691,
+      "false_negative_rate": 0.45682002,
+      "false_positive_rate": 0.07886716,
+      "model": "동네 평균단가 1개",
+      "region_group": "지방",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 1
+    },
+    {
+      "n": 59188,
+      "mape": 0.35145532,
+      "median_ape": 0.28818869,
+      "p90_ape": 0.73243363,
+      "overall_misclassification": 0.18023411,
+      "false_negative_rate": 0.26810498,
+      "false_positive_rate": 0.13892332,
+      "model": "동네 평균단가 1개",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 1
+    },
+    {
+      "n": 41491,
+      "mape": 0.25855828,
+      "median_ape": 0.16084619,
+      "p90_ape": 0.58032127,
+      "overall_misclassification": 0.26608133,
+      "false_negative_rate": 0.18964352,
+      "false_positive_rate": 0.38540342,
+      "model": "동네×면적 5구간",
+      "region_group": "서울",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 5
+    },
+    {
+      "n": 12464,
+      "mape": 0.22788465,
+      "median_ape": 0.15407104,
+      "p90_ape": 0.56577226,
+      "overall_misclassification": 0.03449936,
+      "false_negative_rate": 0.30452022,
+      "false_positive_rate": 0.00410604,
+      "model": "동네×면적 5구간",
+      "region_group": "수도권(경기·인천)",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 5
+    },
+    {
+      "n": 5233,
+      "mape": 0.22556222,
+      "median_ape": 0.11485267,
+      "p90_ape": 0.5354945,
+      "overall_misclassification": 0.15303374,
+      "false_negative_rate": 0.4850686,
+      "false_positive_rate": 0.05441594,
+      "model": "동네×면적 5구간",
+      "region_group": "지방",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 5
+    },
+    {
+      "n": 59188,
+      "mape": 0.23736227,
+      "median_ape": 0.14373467,
+      "p90_ape": 0.55055378,
+      "overall_misclassification": 0.15640406,
+      "false_negative_rate": 0.27857154,
+      "false_positive_rate": 0.09896938,
+      "model": "동네×면적 5구간",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 5
+    },
+    {
+      "n": 41491,
+      "mape": 0.31540259,
+      "median_ape": 0.22197842,
+      "p90_ape": 0.68848264,
+      "overall_misclassification": 0.26997471,
+      "false_negative_rate": 0.21374172,
+      "false_positive_rate": 0.35775639,
+      "model": "동네×주택유형",
+      "region_group": "서울",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 2
+    },
+    {
+      "n": 12464,
+      "mape": 0.27438164,
+      "median_ape": 0.17830651,
+      "p90_ape": 0.59305612,
+      "overall_misclassification": 0.04460847,
+      "false_negative_rate": 0.25138779,
+      "false_positive_rate": 0.02133357,
+      "model": "동네×주택유형",
+      "region_group": "수도권(경기·인천)",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 2
+    },
+    {
+      "n": 5233,
+      "mape": 0.25281995,
+      "median_ape": 0.15004856,
+      "p90_ape": 0.5801609,
+      "overall_misclassification": 0.11736283,
+      "false_negative_rate": 0.2897498,
+      "false_positive_rate": 0.06616212,
+      "model": "동네×주택유형",
+      "region_group": "지방",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 2
+    },
+    {
+      "n": 59188,
+      "mape": 0.28022713,
+      "median_ape": 0.1882543,
+      "p90_ape": 0.61682807,
+      "overall_misclassification": 0.14747833,
+      "false_negative_rate": 0.2373713,
+      "false_positive_rate": 0.10521689,
+      "model": "동네×주택유형",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 2
+    },
+    {
+      "n": 41491,
+      "mape": 0.24896619,
+      "median_ape": 0.14966202,
+      "p90_ape": 0.54008821,
+      "overall_misclassification": 0.23800408,
+      "false_negative_rate": 0.18314298,
+      "false_positive_rate": 0.32364417,
+      "model": "동네×주택유형×면적 5구간",
+      "region_group": "서울",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 10
+    },
+    {
+      "n": 12464,
+      "mape": 0.22212467,
+      "median_ape": 0.14714402,
+      "p90_ape": 0.54441201,
+      "overall_misclassification": 0.03361682,
+      "false_negative_rate": 0.28786677,
+      "false_positive_rate": 0.00499866,
+      "model": "동네×주택유형×면적 5구간",
+      "region_group": "수도권(경기·인천)",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 10
+    },
+    {
+      "n": 5233,
+      "mape": 0.2138657,
+      "median_ape": 0.09710018,
+      "p90_ape": 0.53590876,
+      "overall_misclassification": 0.12900671,
+      "false_negative_rate": 0.26553672,
+      "false_positive_rate": 0.08845587,
+      "model": "동네×주택유형×면적 5구간",
+      "region_group": "지방",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 10
+    },
+    {
+      "n": 59188,
+      "mape": 0.22811415,
+      "median_ape": 0.12713437,
+      "p90_ape": 0.53933535,
+      "overall_misclassification": 0.13779268,
+      "false_negative_rate": 0.21468177,
+      "false_positive_rate": 0.10164476,
+      "model": "동네×주택유형×면적 5구간",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 10
+    }
+  ],
+  "q3_national_threshold_158730159": [
+    {
+      "n": 59188,
+      "mape": 0.29289225,
+      "median_ape": 0.22077867,
+      "p90_ape": 0.60369692,
+      "overall_misclassification": 0.17098738,
+      "false_negative_rate": 0.30807775,
+      "false_positive_rate": 0.10653698,
+      "model": "동네 중위단가 1개",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 1
+    },
+    {
+      "n": 59188,
+      "mape": 0.35145532,
+      "median_ape": 0.28818869,
+      "p90_ape": 0.73243363,
+      "overall_misclassification": 0.18023411,
+      "false_negative_rate": 0.26810498,
+      "false_positive_rate": 0.13892332,
+      "model": "동네 평균단가 1개",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 1
+    },
+    {
+      "n": 59188,
+      "mape": 0.23736227,
+      "median_ape": 0.14373467,
+      "p90_ape": 0.55055378,
+      "overall_misclassification": 0.15640406,
+      "false_negative_rate": 0.27857154,
+      "false_positive_rate": 0.09896938,
+      "model": "동네×면적 5구간",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 5
+    },
+    {
+      "n": 59188,
+      "mape": 0.28022713,
+      "median_ape": 0.1882543,
+      "p90_ape": 0.61682807,
+      "overall_misclassification": 0.14747833,
+      "false_negative_rate": 0.2373713,
+      "false_positive_rate": 0.10521689,
+      "model": "동네×주택유형",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 2
+    },
+    {
+      "n": 59188,
+      "mape": 0.22811415,
+      "median_ape": 0.12713437,
+      "p90_ape": 0.53933535,
+      "overall_misclassification": 0.13779268,
+      "false_negative_rate": 0.21468177,
+      "false_positive_rate": 0.10164476,
+      "model": "동네×주택유형×면적 5구간",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 10
+    }
+  ],
+  "q3_best_model_by_region": {
+    "서울": {
+      "n": 41491,
+      "mape": 0.24896619,
+      "median_ape": 0.14966202,
+      "p90_ape": 0.54008821,
+      "overall_misclassification": 0.23800408,
+      "false_negative_rate": 0.18314298,
+      "false_positive_rate": 0.32364417,
+      "model": "동네×주택유형×면적 5구간",
+      "region_group": "서울",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 10
+    },
+    "수도권(경기·인천)": {
+      "n": 12464,
+      "mape": 0.22212467,
+      "median_ape": 0.14714402,
+      "p90_ape": 0.54441201,
+      "overall_misclassification": 0.03361682,
+      "false_negative_rate": 0.28786677,
+      "false_positive_rate": 0.00499866,
+      "model": "동네×주택유형×면적 5구간",
+      "region_group": "수도권(경기·인천)",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 10
+    },
+    "지방": {
+      "n": 5233,
+      "mape": 0.25281995,
+      "median_ape": 0.15004856,
+      "p90_ape": 0.5801609,
+      "overall_misclassification": 0.11736283,
+      "false_negative_rate": 0.2897498,
+      "false_positive_rate": 0.06616212,
+      "model": "동네×주택유형",
+      "region_group": "지방",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 2
+    },
+    "전국": {
+      "n": 59188,
+      "mape": 0.22811415,
+      "median_ape": 0.12713437,
+      "p90_ape": 0.53933535,
+      "overall_misclassification": 0.13779268,
+      "false_negative_rate": 0.21468177,
+      "false_positive_rate": 0.10164476,
+      "model": "동네×주택유형×면적 5구간",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "stored_unit_price_numbers_per_dong": 10
+    }
+  },
+  "q4_threshold_158730159": [
+    {
+      "region_group": "서울",
+      "threshold": 158730159,
+      "sampled_dongs": 10,
+      "single_unit_price_grade_misclassification": 0.0,
+      "area_bin_grade_misclassification": 0.0,
+      "type_area_grade_misclassification": 0.0,
+      "p25_p50_p75_grade_misclassification": 0.0,
+      "histogram_grade_misclassification": 0.0,
+      "single_share_mae": 0.05193374,
+      "area_bin_share_mae": 0.04286809,
+      "type_area_share_mae": 0.04578436,
+      "histogram_share_mae": 0.0015895
+    },
+    {
+      "region_group": "수도권(경기·인천)",
+      "threshold": 158730159,
+      "sampled_dongs": 11,
+      "single_unit_price_grade_misclassification": 0.18181818,
+      "area_bin_grade_misclassification": 0.0,
+      "type_area_grade_misclassification": 0.0,
+      "p25_p50_p75_grade_misclassification": 0.0,
+      "histogram_grade_misclassification": 0.0,
+      "single_share_mae": 0.04237271,
+      "area_bin_share_mae": 0.02087024,
+      "type_area_share_mae": 0.01931838,
+      "histogram_share_mae": 0.00077596
+    },
+    {
+      "region_group": "지방",
+      "threshold": 158730159,
+      "sampled_dongs": 11,
+      "single_unit_price_grade_misclassification": 0.08641975,
+      "area_bin_grade_misclassification": 0.08641975,
+      "type_area_grade_misclassification": 0.08641975,
+      "p25_p50_p75_grade_misclassification": 0.0,
+      "histogram_grade_misclassification": 0.0,
+      "single_share_mae": 0.03534328,
+      "area_bin_share_mae": 0.03534328,
+      "type_area_share_mae": 0.01266952,
+      "histogram_share_mae": 0.00041088
+    },
+    {
+      "region_group": "전국",
+      "threshold": 158730159,
+      "sampled_dongs": 32,
+      "single_unit_price_grade_misclassification": 0.10204069,
+      "area_bin_grade_misclassification": 0.06047306,
+      "type_area_grade_misclassification": 0.06047306,
+      "p25_p50_p75_grade_misclassification": 0.0,
+      "histogram_grade_misclassification": 0.0,
+      "single_share_mae": 0.03813854,
+      "area_bin_share_mae": 0.03257334,
+      "type_area_share_mae": 0.01656123,
+      "histogram_share_mae": 0.00057875
+    }
+  ],
+  "q4_storage": {
+    "one_unit_price": 1,
+    "area_bins_unit_lookup": 5,
+    "area_bins_with_counts_for_neighborhood_grade": 10,
+    "p25_p50_p75": 3,
+    "type_area_unit_lookup": 10,
+    "histogram_nonempty_bins_mean": 29.53125,
+    "histogram_nonempty_bins_median": 21.5,
+    "histogram_nonempty_bins_p90": 63.8,
+    "histogram_nonempty_bins_max": 137
+  }
+}
