@@ -1,0 +1,2 @@
+/home/runner/work/ltvcheck/ltvcheck/scripts/build_vworld_screened_index.py:69: UserWarning: This pattern is interpreted as a regular expression, and has match groups. To actually get the groups, use str.extract.
+  & frame["last_token"].str.contains(r"(동|가|리|로)$", regex=True, na=False)

@@ -1,0 +1,40 @@
+{
+  "source": "https://raw.githubusercontent.com/kimyejoon/K-Bjd-OpenLib/main/raw_data/bjd_code_20250805.csv",
+  "source_role": "법정동 후보 목록만 사용; 가격·면적·주택유형은 VWorld 공식 API 사용",
+  "vworld_endpoint": "https://ltvcheck.vercel.app/api/vworld-page",
+  "year": "2025",
+  "seed": 20250712,
+  "candidate_sampling": [
+    {
+      "region_group": "서울",
+      "active_leaf_legal_dongs": 467,
+      "screened_dongs": 120,
+      "stage1_probability": 0.2569593147751606
+    },
+    {
+      "region_group": "수도권(경기·인천)",
+      "active_leaf_legal_dongs": 2280,
+      "screened_dongs": 120,
+      "stage1_probability": 0.05263157894736842
+    },
+    {
+      "region_group": "지방",
+      "active_leaf_legal_dongs": 16111,
+      "screened_dongs": 120,
+      "stage1_probability": 0.007448327229842964
+    }
+  ],
+  "screened_total": 360,
+  "screen_success": 360,
+  "eligible_total": 159,
+  "eligible_by_region": {
+    "서울": 86,
+    "수도권(경기·인천)": 51,
+    "지방": 22
+  },
+  "eligibility": {
+    "min_communal_housing_units": 100,
+    "max_communal_housing_units": 200000,
+    "reason_for_upper_bound": "API 호출량 통제; 표본 결과의 외삽 한계로 명시"
+  }
+}
