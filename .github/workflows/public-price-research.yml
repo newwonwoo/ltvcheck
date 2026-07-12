@@ -9,9 +9,6 @@ on:
       - .github/workflows/public-price-research.yml
   pull_request:
     branches: [main]
-    paths:
-      - scripts/research_public_price.py
-      - .github/workflows/public-price-research.yml
 
 permissions:
   contents: write
@@ -32,31 +29,43 @@ jobs:
         run: python -m pip install --disable-pip-version-check duckdb
       - name: Download official 2025 nationwide file
         run: |
-          mkdir -p tmp
+          mkdir -p tmp research_output/public_price_2025
           curl --fail --location --retry 5 --retry-delay 5 \
             --connect-timeout 30 --max-time 2400 \
             --user-agent 'Mozilla/5.0 public-price-research' \
             'https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000003525375&fileDetailSn=1&insertDataPrcus=N' \
             --output tmp/public_price_2025.zip
           ls -lh tmp/public_price_2025.zip
-          python - <<'PY'
+          python - <<'PY' > research_output/public_price_2025/download_check.log 2>&1
           import zipfile
           p='tmp/public_price_2025.zip'
           with zipfile.ZipFile(p) as z:
               print([(i.filename, i.file_size) for i in z.infolist()])
           PY
-      - name: Analyze Q1-Q4
-        run: python scripts/research_public_price.py
+      - name: Analyze Q1-Q4 and capture diagnostics
+        id: analysis
+        continue-on-error: true
+        run: |
+          set +e
+          python scripts/research_public_price.py > research_output/public_price_2025/analysis.log 2>&1
+          code=$?
+          echo "$code" > research_output/public_price_2025/exit_code.txt
+          tail -n 120 research_output/public_price_2025/analysis.log
+          exit $code
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: public-price-2025-results
           path: research_output/public_price_2025
           retention-days: 7
-      - name: Commit compact results
-        if: ${{ github.event_name == 'push' }}
+      - name: Commit results or diagnostics
+        if: ${{ always() && github.event_name == 'push' }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add research_output/public_price_2025
-          git commit -m 'Add 2025 nationwide public-price results [skip ci]' || exit 0
+          git commit -m 'Add public-price research output [skip ci]' || exit 0
           git push origin HEAD:research-public-price
+      - name: Fail when analysis failed
+        if: ${{ steps.analysis.outcome == 'failure' }}
+        run: exit 1
