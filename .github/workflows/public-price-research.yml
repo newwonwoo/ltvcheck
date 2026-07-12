@@ -1,0 +1,33 @@
+name: Public Price Research
+
+on:
+  push:
+    branches: [research-public-price]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-public-price
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install --disable-pip-version-check pandas numpy
+      - name: Analyze nationwide official data
+        run: python scripts/analyze_public_price.py
+      - name: Commit compact results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add research_output
+          git commit -m "Add nationwide public-price results [skip ci]"
+          git push origin HEAD:research-public-price
