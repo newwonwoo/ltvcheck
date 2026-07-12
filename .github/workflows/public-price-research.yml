@@ -47,6 +47,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
+          sed -i 's/count(\*) groups/count(*) group_count/g' scripts/research_public_price.py
           python scripts/research_public_price.py > research_output/public_price_2025/analysis.log 2>&1
           code=$?
           echo "$code" > research_output/public_price_2025/exit_code.txt
