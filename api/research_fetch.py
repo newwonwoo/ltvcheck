@@ -1,16 +1,16 @@
-"""Temporary research-only proxy for discovering official public-data download URLs.
-Allowed hosts are restricted to official VWorld and data.go.kr domains.
-"""
+"""Temporary research-only proxy for official data and public workflow diagnostics."""
 from __future__ import annotations
 import base64, json, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler
-ALLOWED={"www.vworld.kr","vworld.kr","api.vworld.kr","www.data.go.kr","data.go.kr"}
+ALLOWED={"www.vworld.kr","vworld.kr","api.vworld.kr","www.data.go.kr","data.go.kr","api.github.com"}
 MAX_BYTES=4_000_000
 
 def fetch(url:str):
     p=urllib.parse.urlparse(url)
     if p.scheme not in {"http","https"} or p.hostname not in ALLOWED: raise ValueError("host not allowed")
-    req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0 (compatible; public-price-research/1.0)","Accept":"*/*","Referer":"https://www.vworld.kr/"})
+    headers={"User-Agent":"Mozilla/5.0 (compatible; public-price-research/1.0)","Accept":"application/vnd.github+json,*/*"}
+    if "vworld.kr" in (p.hostname or ""): headers["Referer"]="https://www.vworld.kr/"
+    req=urllib.request.Request(url,headers=headers)
     with urllib.request.urlopen(req,timeout=25) as resp:
         raw=resp.read(MAX_BYTES+1); truncated=len(raw)>MAX_BYTES; raw=raw[:MAX_BYTES]
         ctype=resp.headers.get("Content-Type",""); enc=resp.headers.get_content_charset() or "utf-8"
