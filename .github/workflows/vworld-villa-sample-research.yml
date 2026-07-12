@@ -1,0 +1,102 @@
+name: VWorld Villa Sample Research
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [research-public-price]
+    paths:
+      - scripts/build_vworld_screened_index.py
+      - scripts/collect_analyze_vworld_sample.py
+      - .github/workflows/vworld-villa-sample-research.yml
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-public-price
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install analysis packages
+        run: python -m pip install --disable-pip-version-check pandas numpy requests
+      - name: Build screened legal-dong frame
+        id: screen
+        continue-on-error: true
+        env:
+          CANDIDATES_PER_REGION: '120'
+          MIN_TOTAL_UNITS: '100'
+          MAX_TOTAL_UNITS: '200000'
+        run: |
+          mkdir -p research_output/public_price_2025/vworld_sample
+          set +e
+          python scripts/build_vworld_screened_index.py > research_output/public_price_2025/vworld_sample/screen.log 2>&1
+          code=$?
+          echo "$code" > research_output/public_price_2025/vworld_sample/screen_exit_code.txt
+          tail -n 100 research_output/public_price_2025/vworld_sample/screen.log
+          exit $code
+      - name: Apply two-stage design weights
+        if: ${{ steps.screen.outcome == 'success' }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/collect_analyze_vworld_sample.py')
+          s=p.read_text(encoding='utf-8')
+          old='''                sample["sampling_probability"] = probability\n                sample["sampling_weight"] = 1 / probability if probability else np.nan'''
+          new='''                sample["stage2_probability"] = probability\n                sample["sampling_probability"] = sample.get("frame_sampling_probability", 1.0) * probability\n                sample["sampling_weight"] = sample.get("frame_weight", 1.0) / probability if probability else np.nan'''
+          if old not in s:
+              raise SystemExit('weight patch target not found')
+          s=s.replace(old,new)
+          s=s.replace(
+              '"method": "서울/경기·인천/지방 × 각 지역 법정동 공동주택 총호수 순위 3분위 층화 단순무작위",',
+              '"method": "1단계 지역별 active leaf 법정동 단순무작위 스크리닝, 2단계 VWorld 공동주택 총호수 3분위별 단순무작위",',
+          )
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Collect villas and analyze Q1-Q4
+        id: analysis
+        if: ${{ steps.screen.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set +e
+          python scripts/collect_analyze_vworld_sample.py > research_output/public_price_2025/vworld_sample/analysis.log 2>&1
+          code=$?
+          echo "$code" > research_output/public_price_2025/vworld_sample/analysis_exit_code.txt
+          tail -n 160 research_output/public_price_2025/vworld_sample/analysis.log
+          exit $code
+      - name: Remove large raw sample before publishing
+        if: always()
+        run: rm -f research_output/public_price_2025/vworld_sample/vworld_villa_sample.csv.gz
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vworld-villa-sample-results
+          path: |
+            research_output/public_price_2025/screened_index_metadata.json
+            research_output/public_price_2025/screened_legal_dong_candidates.csv
+            research_output/public_price_2025/legal_dong_counts.csv
+            research_output/public_price_2025/vworld_sample
+          retention-days: 14
+      - name: Commit compact results or diagnostics
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add research_output/public_price_2025/screened_index_metadata.json \
+                  research_output/public_price_2025/screened_legal_dong_candidates.csv \
+                  research_output/public_price_2025/legal_dong_counts.csv \
+                  research_output/public_price_2025/vworld_sample
+          git commit -m 'Add VWorld villa sample research output [skip ci]' || exit 0
+          git push origin HEAD:research-public-price
+      - name: Fail if screening failed
+        if: ${{ steps.screen.outcome == 'failure' }}
+        run: exit 1
+      - name: Fail if analysis failed
+        if: ${{ steps.screen.outcome == 'success' && steps.analysis.outcome == 'failure' }}
+        run: exit 1
