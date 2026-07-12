@@ -1,0 +1,425 @@
+{
+  "source": {
+    "dataset": "국토교통부_주택 공시가격 정보_20250626",
+    "reference_date": "2025-01-01",
+    "official_all_rows": 15580435,
+    "official_sha256": "BBADCB0E85787F3DB157B199A6B9DF1601E995228A3976106EC5440C2CD8935C",
+    "csv_entry": "국토교통부_주택 공시가격 정보(2025).csv",
+    "columns": {
+      "area": "전용면적",
+      "price": "공시가격",
+      "type_name": null,
+      "type_code": null,
+      "sido": "시도",
+      "sigungu": "시군구",
+      "eupmyeon": "읍면",
+      "dongri": "동리",
+      "legal_code": "법정동코드"
+    }
+  },
+  "cleaning": {
+    "valid_villa_rows": 0,
+    "eligible_rows_n_ge_5": 0,
+    "eligible_legal_dongs": 0,
+    "excluded_groups_n_lt_5": 0,
+    "excluded_rows_n_lt_5": 0,
+    "outliers": "주분석은 상단 절단 없음; 면적<=0·가격<=0 제거. 0.1~99.9% 단가 민감도 별도"
+  },
+  "q1": [
+    {
+      "region_group": "전국",
+      "group_count": 0,
+      "households": null,
+      "median_cv": null,
+      "p25_cv": null,
+      "p75_cv": null,
+      "share_cv_lt_02": null,
+      "share_cv_ge_04": null,
+      "median_iqr_to_median": null,
+      "median_p10p90_to_median": null,
+      "median_p90_p10_ratio": null,
+      "household_weighted_mean_cv": null
+    }
+  ],
+  "q1_sensitivity": {
+    "group_count": 0,
+    "median_cv": null,
+    "share_cv_lt_02": null,
+    "share_cv_ge_04": null
+  },
+  "q2_area_bins": [],
+  "q2_regression": [
+    {
+      "region_group": "전국",
+      "n": 0,
+      "pooled_slope": null,
+      "pooled_corr": null,
+      "legal_dong_fe_slope": null,
+      "legal_dong_fe_corr": null
+    }
+  ],
+  "q3_unit_metrics": [
+    {
+      "model": "동네_중위단가1개",
+      "region_group": "전국",
+      "threshold": 100000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 1
+    },
+    {
+      "model": "동네_중위단가1개",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 1
+    },
+    {
+      "model": "동네_중위단가1개",
+      "region_group": "전국",
+      "threshold": 200000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 1
+    },
+    {
+      "model": "동네_중위단가1개",
+      "region_group": "전국",
+      "threshold": 300000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 1
+    },
+    {
+      "model": "동네_평균단가1개",
+      "region_group": "전국",
+      "threshold": 100000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 1
+    },
+    {
+      "model": "동네_평균단가1개",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 1
+    },
+    {
+      "model": "동네_평균단가1개",
+      "region_group": "전국",
+      "threshold": 200000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 1
+    },
+    {
+      "model": "동네_평균단가1개",
+      "region_group": "전국",
+      "threshold": 300000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 1
+    },
+    {
+      "model": "동네×면적5구간",
+      "region_group": "전국",
+      "threshold": 100000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 10
+    },
+    {
+      "model": "동네×면적5구간",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 10
+    },
+    {
+      "model": "동네×면적5구간",
+      "region_group": "전국",
+      "threshold": 200000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 10
+    },
+    {
+      "model": "동네×면적5구간",
+      "region_group": "전국",
+      "threshold": 300000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 10
+    },
+    {
+      "model": "동네×주택유형",
+      "region_group": "전국",
+      "threshold": 100000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 4
+    },
+    {
+      "model": "동네×주택유형",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 4
+    },
+    {
+      "model": "동네×주택유형",
+      "region_group": "전국",
+      "threshold": 200000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 4
+    },
+    {
+      "model": "동네×주택유형",
+      "region_group": "전국",
+      "threshold": 300000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 4
+    },
+    {
+      "model": "동네_P50가격",
+      "region_group": "전국",
+      "threshold": 100000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 4
+    },
+    {
+      "model": "동네_P50가격",
+      "region_group": "전국",
+      "threshold": 158730159,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 4
+    },
+    {
+      "model": "동네_P50가격",
+      "region_group": "전국",
+      "threshold": 200000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 4
+    },
+    {
+      "model": "동네_P50가격",
+      "region_group": "전국",
+      "threshold": 300000000,
+      "n": 0,
+      "mape": null,
+      "median_ape": null,
+      "p90_ape": null,
+      "overall_misclass": null,
+      "false_negative_rate": null,
+      "false_positive_rate": null,
+      "storage_numbers_per_dong": 4
+    }
+  ],
+  "q4_grade_metrics": [
+    {
+      "region_group": "전국",
+      "threshold": 100000000,
+      "group_count": 0,
+      "base_grade_misclass": null,
+      "area_grade_misclass": null,
+      "quantile_grade_misclass": null,
+      "base_share_mae": null,
+      "area_share_mae": null
+    },
+    {
+      "region_group": "전국",
+      "threshold": 158730159,
+      "group_count": 0,
+      "base_grade_misclass": null,
+      "area_grade_misclass": null,
+      "quantile_grade_misclass": null,
+      "base_share_mae": null,
+      "area_share_mae": null
+    },
+    {
+      "region_group": "전국",
+      "threshold": 200000000,
+      "group_count": 0,
+      "base_grade_misclass": null,
+      "area_grade_misclass": null,
+      "quantile_grade_misclass": null,
+      "base_share_mae": null,
+      "area_share_mae": null
+    },
+    {
+      "region_group": "전국",
+      "threshold": 300000000,
+      "group_count": 0,
+      "base_grade_misclass": null,
+      "area_grade_misclass": null,
+      "quantile_grade_misclass": null,
+      "base_share_mae": null,
+      "area_share_mae": null
+    }
+  ],
+  "q4_histogram_metrics": [
+    {
+      "region_group": "전국",
+      "threshold": 100000000,
+      "group_count": 0,
+      "hist_share_mae": null,
+      "hist_share_p90_abs_error": null,
+      "hist_grade_misclass": null
+    },
+    {
+      "region_group": "전국",
+      "threshold": 158730159,
+      "group_count": 0,
+      "hist_share_mae": null,
+      "hist_share_p90_abs_error": null,
+      "hist_grade_misclass": null
+    },
+    {
+      "region_group": "전국",
+      "threshold": 200000000,
+      "group_count": 0,
+      "hist_share_mae": null,
+      "hist_share_p90_abs_error": null,
+      "hist_grade_misclass": null
+    },
+    {
+      "region_group": "전국",
+      "threshold": 300000000,
+      "group_count": 0,
+      "hist_share_mae": null,
+      "hist_share_p90_abs_error": null,
+      "hist_grade_misclass": null
+    }
+  ],
+  "q4_histogram_storage": {
+    "avg_nonempty_bins": null,
+    "median_nonempty_bins": null,
+    "p90_nonempty_bins": null,
+    "max_nonempty_bins": null
+  },
+  "definitions": {
+    "cv_rule": {
+      "<0.2": "실용적",
+      "0.2~0.4": "주의",
+      ">=0.4": "부적합"
+    },
+    "area_bins": [
+      "<=30",
+      "30~45",
+      "45~60",
+      "60~85",
+      ">85"
+    ],
+    "grade": {
+      "A": ">=75%",
+      "B": "50~75%",
+      "C": "25~50%",
+      "D": "<25%"
+    }
+  }
+}
