@@ -6,7 +6,7 @@
   "description": "전세보증 한도 미리보기 — 연립·다세대·오피스텔 공시가 변동 안내",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "bash scripts/research_build.sh",
     "preview": "vite preview"
   },
   "dependencies": {
