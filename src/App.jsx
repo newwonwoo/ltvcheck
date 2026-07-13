@@ -3,9 +3,13 @@ import Result from "./components/Result.jsx";
 import StatusCard from "./components/StatusCard.jsx";
 import RegionPicker from "./components/RegionPicker.jsx";
 import UnitPicker from "./components/UnitPicker.jsx";
+import LowPriceFinder from "./components/LowPriceFinder.jsx";
+import RegistryCheck from "./components/RegistryCheck.jsx";
+import AreaFinder from "./components/AreaFinder.jsx";
 import { SAMPLES } from "./data/samples.js";
 
 export default function App() {
+  const [tab, setTab] = useState("price"); // price | low
   const [addr, setAddr] = useState("");
   const [dong, setDong] = useState("");
   const [ho, setHo] = useState("");
@@ -36,6 +40,8 @@ export default function App() {
       area: "—",
       pnu: r.pnu || "—",
       grade: r.confidence_grade || "B",
+      priceCalc: r.price_calc || null,  // 오피스텔 ㎡당×면적 계산근거
+      checks: r.checks || [],           // 확인단계(PASS/FAIL/SKIP/UNKNOWN)
     };
   }
 
@@ -162,45 +168,66 @@ export default function App() {
     }
   }
 
-  // 백엔드 warnings를 사용자 메시지로 번역
+  // 상태코드(status) 우선으로 사용자 메시지 결정. status 없으면 문자열 폴백.
   function diagnose(json) {
+    const addrFound = !!(json && json.pnu);
+    const addr = (json && json.refined_address) || "";
+
+    // 1순위: 명시적 상태코드
+    switch (json && json.status) {
+      case "SOURCE_ERROR":
+        return {
+          kind: "error",
+          title: addrFound ? "주소는 확인했어요 · 공시가만 못 불러왔어요" : "공시가를 불러오지 못했어요",
+          message:
+            (addrFound ? `‘${addr}’ 주소는 찾았어요. ` : "") +
+            "다만 공시가격 조회가 지금 막혀 있어요. (관리자: 공시가 API 인증 확인 필요)",
+        };
+      case "NOT_FOUND":
+        if (!addrFound) {
+          return {
+            kind: "empty",
+            title: "주소를 찾지 못했어요",
+            message: "도로명 또는 지번 주소를 다시 확인해 주세요. (예: 영등포구 도신로29길 28)",
+          };
+        }
+        return {
+          kind: "empty",
+          title: "공시가격 정보가 없어요",
+          message: "이 주소의 공시가격을 찾지 못했어요. 오피스텔이면 잠시 후 다시 시도해 주세요.",
+        };
+      case "UNSUPPORTED":
+        return {
+          kind: "empty",
+          title: "공시가 안내 대상이 아니에요",
+          message: "이 서비스는 연립·다세대·오피스텔의 공시가만 안내해요. (아파트 등은 대상 외)",
+        };
+      default:
+        break;
+    }
+
+    // 폴백: 예전 문자열 기반(하위호환)
     const w = (json && json.warnings) || [];
     const has = (s) => w.some((x) => x.includes(s));
-    const addrFound = !!(json && json.pnu); // 주소 정제 성공 여부
-
-    // 공시가 인증오류 — 주소는 찾았으나 공시가 서버가 막힌 경우
     if (has("INCORRECT_KEY") || has("INVALID_KEY") || has("인증")) {
       return {
         kind: "error",
         title: addrFound ? "주소는 확인했어요 · 공시가만 못 불러왔어요" : "공시가를 불러오지 못했어요",
-        message:
-          (addrFound ? `‘${json.refined_address || ""}’ 주소는 찾았어요. ` : "") +
-          "다만 공시가격 조회가 지금 막혀 있어요. (관리자: 공시가 API 인증 확인 필요)",
+        message: (addrFound ? `‘${addr}’ 주소는 찾았어요. ` : "") +
+          "다만 공시가격 조회가 지금 막혀 있어요.",
       };
     }
-    // 주소 자체를 못 찾음
-    if (!addrFound || has("정제 실패") || has("juso")) {
+    if (!addrFound) {
       return {
         kind: "empty",
         title: "주소를 찾지 못했어요",
-        message: "도로명 또는 지번 주소를 다시 확인해 주세요. (예: 영등포구 도신로29길 28)",
-      };
-    }
-    // 주소는 찾았으나 공시가 데이터가 없음(아파트/비대상 등)
-    if (has("공시가격 미확인") || has("없음") || has("오피스텔")) {
-      const isApt = json.property_type == null && addrFound;
-      return {
-        kind: "empty",
-        title: "공시가격 정보가 없어요",
-        message: isApt
-          ? "아파트이거나 공시 대상이 아닐 수 있어요. 이 서비스는 연립·다세대·오피스텔의 공시가만 안내해요."
-          : "이 주소의 공시가격 정보를 찾지 못했어요. 오피스텔이면 잠시 후 다시 시도해 주세요.",
+        message: "도로명 또는 지번 주소를 다시 확인해 주세요.",
       };
     }
     return {
       kind: "empty",
-      title: "결과를 가져오지 못했어요",
-      message: "동·호를 함께 입력하면 정확도가 올라가요.",
+      title: "공시가격 정보가 없어요",
+      message: "이 주소의 공시가격 정보를 찾지 못했어요.",
     };
   }
 
@@ -209,10 +236,41 @@ export default function App() {
       {/* 헤더 */}
       <header className="brand">
         <div className="brand-mark" aria-hidden="true" />
-        <span className="brand-name">전세보증 한도 미리보기</span>
-        <span className="brand-tag">· 공시가 변동 안내</span>
+        <span className="brand-name">전세보증 도우미</span>
       </header>
 
+      {/* 탭 */}
+      <nav className="tabs" role="tablist">
+        <button
+          role="tab"
+          className={"tab" + (tab === "price" ? " on" : "")}
+          onClick={() => setTab("price")}
+        >공시가 조회</button>
+        <button
+          role="tab"
+          className={"tab" + (tab === "low" ? " on" : "")}
+          onClick={() => setTab("low")}
+        >1억 이하 주택</button>
+        <button
+          role="tab"
+          className={"tab" + (tab === "area" ? " on" : "")}
+          onClick={() => setTab("area")}
+        >동네 찾기</button>
+        <button
+          role="tab"
+          className={"tab" + (tab === "registry" ? " on" : "")}
+          onClick={() => setTab("registry")}
+        >등기부 확인</button>
+      </nav>
+
+      {tab === "area" ? (
+        <AreaFinder />
+      ) : tab === "registry" ? (
+        <RegistryCheck />
+      ) : tab === "low" ? (
+        <LowPriceFinder />
+      ) : (
+      <>
       {/* 인트로 */}
       <section className="intro">
         <span className="eyebrow">
@@ -301,6 +359,8 @@ export default function App() {
         <div className="src">국토교통부 공동주택가격 · 국세청 상업용건물/오피스텔 기준시가</div>
         <div>주소 정제 행정안전부 · 시세 없는 주택(연립·다세대·오피스텔)의 공시가 변동만 안내합니다</div>
       </footer>
+      </>
+      )}
     </div>
   );
 }

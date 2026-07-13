@@ -32,7 +32,9 @@ from dataclasses import dataclass, field
 
 
 # 적재/조회가 공유하는 컬럼 순서
-COLUMNS = ["pnu", "ldcode", "building", "dong", "floor", "ho", "prvuse", "price", "year"]
+#   price = 국세청 고시가격(㎡당 단가, 원/㎡). 총액 아님!
+#   실제 호별 기준시가 = price × (prvuse + share)  ← 국세청 공식(손택스)
+COLUMNS = ["pnu", "ldcode", "building", "dong", "floor", "ho", "prvuse", "share", "price", "year"]
 
 
 def _env(name, default=None):
@@ -47,9 +49,24 @@ class OfficetelUnit:
     dong: str = None
     floor: str = None
     ho: str = None
-    prvuse: float = None
-    price: int = None
+    prvuse: float = None      # 전용면적
+    share: float = None       # 공유면적
+    price: int = None         # 고시가격 = ㎡당 단가(원/㎡). 총액 아님
     year: str = None
+
+    @property
+    def total_price(self):
+        """실제 호별 기준시가 = ㎡당 단가 × (전용 + 공유). 국세청 공식."""
+        if self.price is None or self.prvuse is None:
+            return None
+        area = float(self.prvuse) + float(self.share or 0)
+        return round(self.price * area)
+
+    @property
+    def calc_area(self):
+        if self.prvuse is None:
+            return None
+        return round(float(self.prvuse) + float(self.share or 0), 2)
 
 
 @dataclass
@@ -82,7 +99,7 @@ def _dict_to_unit(d):
     return OfficetelUnit(
         pnu=d.get("pnu"), building=d.get("building"), dong=d.get("dong"),
         floor=d.get("floor"), ho=d.get("ho"), prvuse=d.get("prvuse"),
-        price=price, year=d.get("year"),
+        share=d.get("share"), price=price, year=d.get("year"),
     )
 
 
@@ -195,7 +212,7 @@ def fetch_officetel_by_pnu(pnu, year=None, *, ho=None, conn=None, db_path=None):
 
         # 백엔드별 파라미터 표기(?/%s)로 SQL 구성
         ph = _placeholder(kind)
-        sql = ("SELECT pnu, ldcode, building, dong, floor, ho, prvuse, price, year "
+        sql = ("SELECT pnu, ldcode, building, dong, floor, ho, prvuse, share, price, year "
                f"FROM officetel WHERE pnu = {ph}")
         params = [pnu]
         if year:
@@ -225,9 +242,9 @@ def fetch_officetel_by_pnu(pnu, year=None, *, ho=None, conn=None, db_path=None):
             if res.matched is None:
                 res.warnings.append(f"호 '{ho}' 미매칭 - 해당 호 없음(후보 {len(res.units)}건)")
                 return res
-            res.price = res.matched.price
+            res.price = res.matched.total_price  # ㎡당×(전용+공유) 총액
         elif len(res.units) == 1:
-            res.price = res.units[0].price
+            res.price = res.units[0].total_price
         else:
             # 여러 호인데 호 미지정 → 임의 대표값 안 냄, 호 입력 요구
             res.needs_unit = True
@@ -243,9 +260,33 @@ def fetch_officetel_by_pnu(pnu, year=None, *, ho=None, conn=None, db_path=None):
     return res
 
 
+def _ofc_unit_key(u):
+    """오피스텔 세대 동일성 키(동|층|호 정규화). gongsiga와 동일 원칙."""
+    return f"{_norm(u.dong)}|{_norm(u.floor)}|{_norm(u.ho)}"
+
+
 def fetch_two_years(pnu, *, this_year, last_year, ho=None,
                     conn=None, db_path=None):
-    """오피스텔 구·신 2개년 조회. 반환: (구, 신) OfficetelResult."""
-    prev = fetch_officetel_by_pnu(pnu, last_year, ho=ho, conn=conn, db_path=db_path)
+    """
+    오피스텔 구·신 2개년 조회. 반환: (구, 신) OfficetelResult.
+    ★최신 연도에서 세대 확정 후, 전년도는 동일 unit_key만 비교(연도 독립매칭 금지).
+    """
     cur = fetch_officetel_by_pnu(pnu, this_year, ho=ho, conn=conn, db_path=db_path)
+    prev = fetch_officetel_by_pnu(pnu, last_year, conn=conn, db_path=db_path)
+
+    anchor = cur.matched or (cur.units[0] if (cur.price is not None and len(cur.units) == 1) else None)
+    if anchor is not None:
+        key_cur = _ofc_unit_key(anchor)
+        same = [u for u in prev.units if _ofc_unit_key(u) == key_cur]
+        if len(same) == 1:
+            prev.matched = same[0]
+            prev.price = same[0].total_price
+            prev.needs_unit = False
+        else:
+            prev.matched = None
+            prev.price = None
+            prev.warnings.append("전년도에서 동일 세대를 확인하지 못해 비교 생략")
+    else:
+        prev.price = None
+
     return prev, cur

@@ -42,10 +42,16 @@ class LookupResult:
     price_last: int = None     # 구 공시가/기준시가(작년)
     price_this: int = None     # 신 공시가/기준시가(올해)
     price_delta: int = None
+    # 오피스텔 계산근거(㎡당 단가 × 면적). 연립·다세대는 None(총액 직접 제공)
+    price_calc: dict = None
     confidence_score: int = 0
     confidence_grade: str = "F"
     needs_manual_check: bool = True
     available_units: list = None  # 여러 세대일 때 존재하는 동·호 목록
+    # 명시적 상태코드(프론트가 문자열 grep 대신 이걸로 분기)
+    status: str = None
+    # 확인단계 [{key, state(PASS|FAIL|SKIP|UNKNOWN), label}]
+    checks: list = None
     warnings: list = None
 
     def __post_init__(self):
@@ -55,9 +61,69 @@ class LookupResult:
             self.region_candidates = []
         if self.available_units is None:
             self.available_units = []
+        if self.checks is None:
+            self.checks = []
 
     def to_dict(self):
+        # 명시적 상태코드·확인단계를 최종 상태에서 파생(프론트 문자열 grep 대체)
+        if self.status is None:
+            self.status = _resolve_status(self)
+        if not self.checks:
+            self.checks = _resolve_checks(self)
         return asdict(self)
+
+
+def _resolve_status(out):
+    """최종 상태에서 명시적 상태코드 도출.
+    값: SUCCESS / SUCCESS_CURRENT_ONLY / NEEDS_ADDRESS_SELECTION /
+        NEEDS_UNIT_SELECTION / NOT_FOUND / SOURCE_ERROR / UNSUPPORTED"""
+    w = " ".join(out.warnings or [])
+    if "인증" in w or "INCORRECT_KEY" in w or "INVALID_KEY" in w:
+        return "SOURCE_ERROR"
+    if out.ambiguous and out.region_candidates:
+        return "NEEDS_ADDRESS_SELECTION"
+    if out.needs_unit:
+        return "NEEDS_UNIT_SELECTION"
+    if out.ok and out.price_this is not None:
+        return "SUCCESS" if out.price_last is not None else "SUCCESS_CURRENT_ONLY"
+    if out.property_type and out.is_target is False:
+        return "UNSUPPORTED"          # 아파트 등 대상 외
+    if out.pnu and out.price_this is None:
+        return "NOT_FOUND"            # 주소는 찾았으나 가격 없음
+    return "NOT_FOUND"
+
+
+def _resolve_checks(out):
+    """확인단계: PASS/FAIL/SKIP/UNKNOWN. 미입력은 FAIL이 아니라 SKIP."""
+    def chk(key, label, state):
+        return {"key": key, "label": label, "state": state}
+    checks = []
+    # 주소 확인
+    checks.append(chk("address", "주소 확인",
+                      "PASS" if out.pnu else "FAIL"))
+    # 세대 확인 — 값이 나왔고 needs_unit이 아니면 세대까지 확정된 것
+    if out.needs_unit:
+        checks.append(chk("unit", "세대 확인", "FAIL"))
+    elif out.price_this is not None:
+        checks.append(chk("unit", "세대 확인", "PASS"))
+    else:
+        checks.append(chk("unit", "세대 확인", "UNKNOWN"))
+    # 가격 확인
+    checks.append(chk("price", "가격 확인",
+                      "PASS" if out.price_this is not None else "FAIL"))
+    # 전년도 비교 — 비교값 있으면 PASS, 없으면(세대 미확인 등) UNKNOWN
+    if out.price_last is not None:
+        checks.append(chk("compare", "전년도 비교", "PASS"))
+    elif out.price_this is not None:
+        checks.append(chk("compare", "전년도 비교", "UNKNOWN"))
+    else:
+        checks.append(chk("compare", "전년도 비교", "SKIP"))
+    # 등기 교차확인 — 등기고유번호 입력 시에만. 아니면 SKIP(미수행, 실패 아님)
+    if out.input_type == "등기고유번호":
+        checks.append(chk("registry", "등기 교차확인", "PASS"))
+    else:
+        checks.append(chk("registry", "등기 교차확인", "SKIP"))
+    return checks
 
 
 def _unit_list(units, *, dong_attr="dongNm", ho_attr="hoNm"):
@@ -203,7 +269,7 @@ def lookup(text, *, this_year, last_year,
         prev, cur = apt_prev, apt_cur
         chosen = apt_cur.matched or (apt_cur.units[0] if apt_cur.units else None)
         out.building_name = getattr(chosen, "aphusNm", None)
-        ho_matched = (apt_cur.matched is not None) or (apt_prev.matched is not None)
+        ho_matched = apt_cur.matched is not None  # 최신 연도에서 입력 호가 실제 매칭된 경우만
 
         # VWorld 응답의 공동주택구분(아파트/연립/다세대)으로 실제 종류 판정
         se = (getattr(chosen, "aphusSeCodeNm", None) or "").strip()
@@ -232,7 +298,17 @@ def lookup(text, *, this_year, last_year,
         prev, cur = ofc_prev, ofc_cur
         chosen = ofc_cur.matched or (ofc_cur.units[0] if ofc_cur.units else None)
         out.building_name = getattr(chosen, "building", None)
-        ho_matched = (ofc_cur.matched is not None) or (ofc_prev.matched is not None)
+        ho_matched = ofc_cur.matched is not None  # 최신 연도 매칭만
+        # 계산근거: 총액 = ㎡당 단가 × (전용+공유). 사용자에게 식을 보여주기 위함
+        if chosen is not None:
+            out.price_calc = {
+                "unit_price_per_m2": chosen.price,
+                "exclusive_area_m2": chosen.prvuse,
+                "share_area_m2": chosen.share,
+                "total_area_m2": chosen.calc_area,
+                "formula": "㎡당 기준시가 × (전용면적 + 공유면적)",
+                "source": "NTS",
+            }
     elif ofc_cur.needs_unit:
         # 오피스텔 여러 호인데 호 미특정 → 값 없이 호 요구
         prev, cur = ofc_prev, ofc_cur
@@ -271,7 +347,8 @@ def lookup(text, *, this_year, last_year,
     c = score_confidence(
         refine_tier=geo.tier,
         has_jibun=refined_bonbun,
-        has_ho=ho_matched or bool(out.ho),
+        # 호 확인은 '원천 데이터와 실제 매칭'된 경우만. 입력만 했다고 가산하지 않음.
+        has_ho=ho_matched,
         registry_cross_checked=(routed.종류 == "등기고유번호"),
         warnings=out.warnings,
     )

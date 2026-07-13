@@ -91,23 +91,28 @@ def _parts_from_juso(item):
 
 def _group_by_region(juso_list):
     """
-    동명이지(同名異地) 처리: juso 후보들을 행정구역(법정동코드 10자리=PNU prefix)으로 묶는다.
-    같은 법정동이면 도로명/지번 표현이 달라도 1개 지역으로 압축.
-    진짜 다른 시군구(예: 중앙동이 여러 시)는 각각 살린다.
-    반환: 지역 후보 리스트 [{시도,시군구,읍면동,pnu_prefix,대표주소,_item}]
+    동명이지(同名異地) 처리: juso 후보들을 '필지 단위(PNU 전체)'로 묶는다.
+    같은 PNU(같은 필지)의 도로명/지번 표현 차이만 1건으로 압축하고,
+    같은 법정동이라도 번지(본번/부번)가 다르면 별개 후보로 노출한다.
+    (737번지와 737-1번지는 다른 물건 — 법정동만 같다고 자동확정하면 안 됨)
+    반환: 후보 리스트 [{시도,시군구,읍면동,pnu_prefix,대표주소,_item}]
     """
     groups = {}
     for it in juso_list:
         admcd = it.get("admCd") or ""
-        prefix = admcd[:10]  # 시도2+시군구3+읍면동3+리2
-        if not prefix:
+        if len(admcd) < 10:
             continue
-        if prefix not in groups:
-            groups[prefix] = {
+        # 필지 식별키 = 법정동10 + 산여부 + 본번 + 부번 (juso 필드로 구성)
+        mt = "2" if str(it.get("mtYn") or "0") == "1" else "1"
+        bon = str(it.get("lnbrMnnm") or "0").zfill(4)
+        bu = str(it.get("lnbrSlno") or "0").zfill(4)
+        key = f"{admcd[:10]}{mt}{bon}{bu}"
+        if key not in groups:
+            groups[key] = {
                 "시도": it.get("siNm"),
                 "시군구": it.get("sggNm"),
                 "읍면동": it.get("emdNm"),
-                "pnu_prefix": prefix,
+                "pnu_prefix": admcd[:10],
                 "대표주소": it.get("roadAddr") or it.get("jibunAddr"),
                 "우편번호": it.get("zipNo"),
                 "_item": it,  # 대표 1건(번지까지 확정용)

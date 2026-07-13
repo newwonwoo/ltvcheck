@@ -110,28 +110,31 @@ import re as _re
 
 def _norm(v):
     """
-    동/호 비교용 정규화. 사용자가 숫자만 넣어도 인식되게:
+    동/호 비교용 정규화. 사용자가 숫자만 넣어도 인식되되,
+    문자 접두부(B/A/지하 등)는 세대 식별자이므로 보존한다.
       "제105동" / "105동" / "105" → "105"
       "1403호" / "1403" → "1403"
-      "101-1403" / "101동 1403호" 류의 하이픈/구분자 제거
-      "B동" / "가동" 등 숫자 없는 동은 한글/영문 그대로(소문자화)
+      "0101호" → "101"              (앞 0 제거)
+      "B101호" → "b101"             (접두부 보존 — B101은 지하101호일 수 있어
+                                      101과 절대 동일시하지 않음. 대소문자만 흡수)
+      "지하101호" → "지하101"        (보존. 지하↔B 동일시는 원천 표기 실측 전 금지)
+      "가동" → "가"                  (숫자 없는 동은 원문 소문자)
     """
     if v is None:
         return ""
     s = str(v).strip().replace(" ", "")
     # 접두 '제' 및 단위 꼬리 제거
     s = s.lstrip("제").rstrip("호동층")
-    # 핵심 숫자(+하이픈/영문 섞인 호수)가 있으면 그것만 사용
-    #  - 순수 숫자면 앞 0 제거해 105==0105 매칭
+    if not s:
+        return ""
+    # 순수 숫자 → 앞 0 제거 ("0105" -> "105")
     if s.isdigit():
-        return str(int(s))  # "0105" -> "105"
-    # 숫자+구분자+숫자(예: 101-1403) → 숫자만 이어붙임
-    digits = _re.findall(r"\d+", s)
-    if digits:
-        # 앞 0 제거해 이어붙임
-        return "".join(str(int(d)) for d in digits)
-    # 숫자 없음(가동/나동/B동 등) → 소문자 원문
-    return s.lower()
+        return str(int(s))
+    # 문자 포함 → 접두부/구분자 구조를 보존하되 각 숫자 덩어리의 앞 0만 제거
+    #   "B0101" -> "b101", "지하101" -> "지하101", "101-1403" -> "101-1403"
+    #   (기존의 '숫자만 추출해 이어붙이기'는 B101==101 오매칭을 만들어 폐기)
+    normalized = _re.sub(r"\d+", lambda m: str(int(m.group())), s)
+    return normalized.lower()
 
 
 def _parse_json(raw):
@@ -193,11 +196,12 @@ def fetch_price_by_pnu(pnu, year=None, *, dong=None, ho=None,
         res.warnings.append("VWORLD_API_KEY 미설정")
         return res
 
-    # 동/호는 서버 필터링도 가능하지만, 한 PNU 전체를 받아 우리 쪽에서 매칭한다
-    # (서버 dongNm/hoNm 표기와 등기부 표기가 미세히 다를 수 있어 안전)
-    url = _build_url(pnu, year=year, key=key, domain=domain)
+    # 한 PNU 전체를 받아 우리 쪽에서 매칭한다(서버 표기차 흡수 위해 §설계).
+    # 1000건 초과 대단지는 페이지를 이어받아 세대 누락을 막는다.
     try:
-        raw = http_get(url)
+        NUM = 1000
+        raw = http_get(_build_url(pnu, year=year, key=key, domain=domain,
+                                  num_rows=NUM, page=1))
         fields, total, err = _parse_json(raw)
         res.total_count = total or len(fields)
         if err:
@@ -209,6 +213,18 @@ def fetch_price_by_pnu(pnu, year=None, *, dong=None, ho=None,
         if not fields:
             res.warnings.append("해당 PNU 공시가격 없음")
             return res
+
+        # total이 첫 페이지 수를 넘으면 나머지 페이지 순회(최대 20페이지=2만 세대 안전장치)
+        if total and total > len(fields):
+            page = 2
+            while len(fields) < total and page <= 20:
+                more_raw = http_get(_build_url(pnu, year=year, key=key, domain=domain,
+                                               num_rows=NUM, page=page))
+                more, _t, more_err = _parse_json(more_raw)
+                if more_err or not more:
+                    break
+                fields.extend(more)
+                page += 1
 
         res.units = [_to_unit(f) for f in fields]
 
@@ -243,6 +259,10 @@ def fetch_price_by_pnu(pnu, year=None, *, dong=None, ho=None,
             pass  # 위에서 이미 needs_unit 설정
         elif len(res.units) == 1:
             res.price = res.units[0].price
+            # 단일 세대라도 입력한 호와 원천 호가 다르면 정직하게 고지
+            if ho and _norm(res.units[0].hoNm) and _norm(res.units[0].hoNm) != _norm(ho):
+                res.warnings.append(
+                    f"입력 호({ho})와 자료상 호({res.units[0].hoNm})가 달라요 - 확인 필요")
         else:
             res.needs_unit = True  # 동/호 입력 필요 신호
             if dong or ho:
@@ -254,11 +274,55 @@ def fetch_price_by_pnu(pnu, year=None, *, dong=None, ho=None,
     return res
 
 
+def _unit_key(u):
+    """세대 동일성 키. 연도 간 '같은 세대'를 잇는 기준.
+    동·층·호 정규화 조합(PNU는 조회 내 고정이라 제외, 단지명은 개명 리스크로 제외)."""
+    return f"{_norm(u.dongNm)}|{_norm(u.floorNm)}|{_norm(u.hoNm)}"
+
+
 def fetch_two_years(pnu, *, this_year, last_year, dong=None, ho=None,
                     http_get=None, key=None, domain=None):
-    """구·신 2개년 공시가격을 한 번에. 반환: (구, 신) PriceResult 튜플."""
-    prev = fetch_price_by_pnu(pnu, last_year, dong=dong, ho=ho,
-                              http_get=http_get, key=key, domain=domain)
+    """
+    구·신 2개년 공시가격. 반환: (구, 신) PriceResult 튜플.
+
+    ★연도 매칭 원칙: 최신 연도에서 세대를 먼저 확정하고, 전년도는
+    같은 unit_key(동|층|호)를 가진 세대만 비교 대상으로 삼는다.
+    (신·구를 각각 독립 매칭하면 연도별 표기 차이로 서로 다른 세대가
+     증감 비교될 수 있음 — 그 경우 증감을 내지 않는 게 정직하다)
+    """
     cur = fetch_price_by_pnu(pnu, this_year, dong=dong, ho=ho,
                              http_get=http_get, key=key, domain=domain)
+
+    # 전년도 전 세대 수신(매칭은 아래에서 unit_key로)
+    prev = fetch_price_by_pnu(pnu, last_year,
+                              http_get=http_get, key=key, domain=domain)
+
+    if cur.matched is not None:
+        # 최신 연도에서 세대 확정됨 → 전년도는 동일 unit_key만
+        key_cur = _unit_key(cur.matched)
+        same = [u for u in prev.units if _unit_key(u) == key_cur]
+        if len(same) == 1:
+            prev.matched = same[0]
+            prev.price = same[0].price
+            prev.needs_unit = False
+        else:
+            prev.matched = None
+            prev.price = None  # 증감 계산 금지
+            prev.warnings.append(
+                "전년도에서 동일 세대를 확인하지 못해 비교 생략"
+                + (f"(동일키 {len(same)}건)" if same else "(해당 세대 없음)"))
+    elif cur.price is not None and len(cur.units) == 1:
+        # 단일 세대 확정 케이스 — 전년도도 단일이며 같은 키일 때만 비교
+        key_cur = _unit_key(cur.units[0])
+        same = [u for u in prev.units if _unit_key(u) == key_cur]
+        if len(same) == 1:
+            prev.matched = same[0]
+            prev.price = same[0].price
+        else:
+            prev.price = None
+            prev.warnings.append("전년도에서 동일 세대를 확인하지 못해 비교 생략")
+    else:
+        # 최신 연도 미확정(needs_unit 등) → 전년도 값도 내지 않음
+        prev.price = None
+
     return prev, cur

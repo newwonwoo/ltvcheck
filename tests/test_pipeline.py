@@ -159,20 +159,22 @@ def test_pipeline_registry_number_needs_lookup():
 
 
 def _officetel_memory_db():
-    """인메모리 오피스텔 DB(키/파일 없이 재현). 인터시티오피스텔 201호 구·신."""
+    """인메모리 오피스텔 DB. 인터시티오피스텔 201호 구·신.
+    price는 ㎡당 단가(원/㎡), 총액은 price×(전용+공유)로 계산됨(국세청 공식)."""
     import sqlite3
     con = sqlite3.connect(":memory:")
     con.row_factory = sqlite3.Row
     con.execute("""CREATE TABLE officetel(
         pnu TEXT, ldcode TEXT, building TEXT, dong TEXT, floor TEXT, ho TEXT,
-        prvuse REAL, price INTEGER, year TEXT)""")
+        prvuse REAL, share REAL, price INTEGER, year TEXT)""")
+    # 실데이터 기준: 201호 전용29.84 공유12.87
     rows = [
         ("1150010300103430032", "1150010300", "인터시티오피스텔", "1", "2", "201",
-         29.84, 2084000, "2025"),
+         29.84, 12.87, 2084000, "2025"),
         ("1150010300103430032", "1150010300", "인터시티오피스텔", "1", "2", "201",
-         29.84, 2005000, "2026"),
+         29.84, 12.87, 2005000, "2026"),
     ]
-    con.executemany("INSERT INTO officetel VALUES (?,?,?,?,?,?,?,?,?)", rows)
+    con.executemany("INSERT INTO officetel VALUES (?,?,?,?,?,?,?,?,?,?)", rows)
     con.commit()
     return con
 
@@ -199,9 +201,11 @@ def test_pipeline_officetel_integration():
     assert out.ok, out.warnings
     assert out.property_type == "오피스텔", out.property_type
     assert out.pnu == "1150010300103430032"
-    assert out.price_last == 2084000
-    assert out.price_this == 2005000
-    assert out.price_delta == -79000   # 기준시가 하락
+    # 총액 = ㎡당 × (전용+공유). 42.71㎡ 기준
+    # 2025: 2084000×42.71 = 89,008,640 / 2026: 2005000×42.71 = 85,633,550
+    assert out.price_last == round(2084000 * (29.84 + 12.87)), out.price_last
+    assert out.price_this == round(2005000 * (29.84 + 12.87)), out.price_this
+    assert out.price_delta < 0   # 기준시가 하락(㎡당 2084→2005)
     conn.close()
 
 
@@ -218,17 +222,77 @@ def test_officetel_libsql_path():
     try:
         c = libsql_client.create_client_sync(url="file:" + path)
         c.execute("""CREATE TABLE officetel(pnu TEXT,ldcode TEXT,building TEXT,
-            dong TEXT,floor TEXT,ho TEXT,prvuse REAL,price INTEGER,year TEXT)""")
-        c.execute("INSERT INTO officetel VALUES (?,?,?,?,?,?,?,?,?)",
+            dong TEXT,floor TEXT,ho TEXT,prvuse REAL,share REAL,price INTEGER,year TEXT)""")
+        c.execute("INSERT INTO officetel VALUES (?,?,?,?,?,?,?,?,?,?)",
                   ["1150010300103430032", "1150010300", "인터시티오피스텔", "1",
-                   "2", "201", 29.84, 2005000, "2026"])
+                   "2", "201", 29.84, 12.87, 2005000, "2026"])
         from jeonse_pnu.officetel import fetch_officetel_by_pnu
         r = fetch_officetel_by_pnu("1150010300103430032", "2026", ho="201", conn=c)
-        assert r.ok and r.price == 2005000, r.warnings
+        # 총액 = 2005000 × (29.84+12.87)
+        assert r.ok and r.price == round(2005000 * (29.84 + 12.87)), r.warnings
         assert r.matched and r.matched.ho == "201"
         c.close()
     finally:
         os.remove(path)
+
+
+def test_officetel_total_price_calculation():
+    """오피스텔 고시가격은 ㎡당 단가 → 총액=㎡당×(전용+공유). 계산근거도 응답에 포함."""
+    import sqlite3
+    from jeonse_pnu import lookup
+
+    def juso(url, timeout=6):
+        return json.dumps({"results": {"common": {"errorCode": "0"}, "juso": [
+            {"admCd": "1150010300", "lnbrMnnm": "343", "lnbrSlno": "32", "mtYn": "0",
+             "jibunAddr": "서울 강서구 화곡동 343-32", "bdKdcd": "1"}]}})
+
+    def apart_empty(url, timeout=6):
+        return json.dumps({"apartHousingPrices": {"totalCount": 0, "fields": {"field": []}}})
+
+    con = sqlite3.connect(":memory:")
+    con.row_factory = sqlite3.Row
+    con.execute("""CREATE TABLE officetel(pnu TEXT,ldcode TEXT,building TEXT,dong TEXT,floor TEXT,ho TEXT,
+        prvuse REAL,share REAL,price INTEGER,year TEXT)""")
+    con.executemany("INSERT INTO officetel VALUES (?,?,?,?,?,?,?,?,?,?)", [
+        ("1150010300103430032", "1150010300", "OO텔", "1", "2", "201", 29.84, 12.87, 2005000, "2026"),
+    ])
+    con.commit()
+    out = lookup("서울 강서구 화곡동 343-32 OO텔 201호", this_year="2026", last_year="2025",
+                 juso_http=juso, juso_key="D", gongsiga_http=apart_empty, gongsiga_key="D",
+                 officetel_conn=con)
+    # 총액 = 2005000 × (29.84+12.87) = 85,633,550 (㎡당 raw 2005000이 아님)
+    assert out.price_this == round(2005000 * 42.71), out.price_this
+    assert out.price_this > 80_000_000  # ㎡당 raw였다면 200만원대였을 것
+    assert out.price_calc["unit_price_per_m2"] == 2005000
+    assert out.price_calc["total_area_m2"] == 42.71
+    con.close()
+
+
+def test_status_and_checks():
+    """명시적 status 코드 + 확인단계(SKIP 포함) 파생."""
+    from jeonse_pnu import lookup
+
+    def juso(url, timeout=5):
+        j = {"admCd": "1153010700", "siNm": "서울", "sggNm": "구로구", "emdNm": "개봉동",
+             "roadAddr": "경인로 302", "jibunAddr": "개봉동 497", "lnbrMnnm": "497",
+             "lnbrSlno": "0", "mtYn": "0", "bdKdcd": "1"}
+        return json.dumps({"results": {"common": {"errorCode": "0"}, "juso": [j]}}, ensure_ascii=False)
+
+    def vw(url, timeout=6):
+        y = "2026" if "stdrYear=2026" in url else "2025"
+        p = 510000000 if y == "2026" else 491000000
+        f = [{"pnu": "P", "aphusNm": "센", "aphusSeCodeNm": "아파트", "dongNm": "", "hoNm": h,
+              "floorNm": "14", "prvuseAr": "84", "pblntfPc": str(p), "stdrYear": y} for h in ["1401", "1403"]]
+        return json.dumps({"apartHousingPrices": {"totalCount": 2, "fields": {"field": f}}}, ensure_ascii=False)
+
+    d = lookup("서울 구로구 경인로 302", this_year="2026", last_year="2025", ho="1403",
+               juso_http=juso, juso_key="D", gongsiga_http=vw, gongsiga_key="D").to_dict()
+    assert d["status"] == "SUCCESS"
+    states = {c["key"]: c["state"] for c in d["checks"]}
+    assert states["address"] == "PASS"
+    assert states["price"] == "PASS"
+    # 등기 미입력은 실패가 아니라 SKIP
+    assert states["registry"] == "SKIP"
 
 
 def test_geocode_dongmyeong_iji():
@@ -250,11 +314,30 @@ def test_geocode_dongmyeong_iji():
     assert any("동명이지" in w for w in r.warnings)
 
 
-def test_geocode_same_dong_compressed():
-    """같은 법정동의 복수 표현은 prefix로 압축 → 자동 확정."""
+def test_geocode_same_parcel_compressed():
+    """같은 '필지(PNU)'의 복수 도로명 표현만 압축. 다른 번지는 별도 후보로 노출."""
     from jeonse_pnu.providers import geocode_juso
 
-    def juso_same(url, timeout=5):
+    # 같은 필지(역삼동 737)의 도로명 2개 표현 → 압축돼 자동확정
+    def juso_same_parcel(url, timeout=5):
+        return json.dumps({"results": {"common": {"errorCode": "0"}, "juso": [
+            {"admCd": "1168010100", "siNm": "서울", "sggNm": "강남구", "emdNm": "역삼동",
+             "roadAddr": "테헤란로 152", "jibunAddr": "역삼동 737",
+             "lnbrMnnm": "737", "lnbrSlno": "0", "mtYn": "0", "bdKdcd": "0"},
+            {"admCd": "1168010100", "siNm": "서울", "sggNm": "강남구", "emdNm": "역삼동",
+             "roadAddr": "테헤란로 152 (별칭)", "jibunAddr": "역삼동 737",
+             "lnbrMnnm": "737", "lnbrSlno": "0", "mtYn": "0", "bdKdcd": "0"},
+        ]}})
+    r = geocode_juso("역삼동 737", http_get=juso_same_parcel, key="D")
+    assert r.ok and not r.ambiguous
+    assert r.parts.to_pnu().startswith("1168010100")
+
+
+def test_geocode_different_bunji_separated():
+    """같은 법정동이라도 번지(본번/부번)가 다르면 별개 물건 → 후보로 노출(P0-2)."""
+    from jeonse_pnu.providers import geocode_juso
+
+    def juso_diff_bunji(url, timeout=5):
         return json.dumps({"results": {"common": {"errorCode": "0"}, "juso": [
             {"admCd": "1168010100", "siNm": "서울", "sggNm": "강남구", "emdNm": "역삼동",
              "roadAddr": "테헤란로 152", "jibunAddr": "역삼동 737",
@@ -263,9 +346,9 @@ def test_geocode_same_dong_compressed():
              "roadAddr": "테헤란로 154", "jibunAddr": "역삼동 737-1",
              "lnbrMnnm": "737", "lnbrSlno": "1", "mtYn": "0", "bdKdcd": "0"},
         ]}})
-    r = geocode_juso("역삼동", http_get=juso_same, key="D")
-    assert r.ok and not r.ambiguous
-    assert r.parts.to_pnu().startswith("1168010100")
+    r = geocode_juso("역삼동", http_get=juso_diff_bunji, key="D")
+    # 737과 737-1은 다른 필지 → 자동확정 금지, 후보 2건 노출
+    assert r.ambiguous and len(r.region_candidates) == 2
 
 
 def test_geocode_cascade_strip_detail():
@@ -496,6 +579,19 @@ def test_available_units_returned():
     # 동→호 순 정렬 확인
     assert d["available_units"][0] == {"dong": "101", "ho": "101"}
     assert d["available_units"][-1] == {"dong": "102", "ho": "1403"}
+
+
+def test_norm_prefix_preserved():
+    """문자 접두부(B/A/지하)는 세대 식별자 — 101과 절대 동일시 금지."""
+    from jeonse_pnu.gongsiga import _norm
+    assert _norm("B101") != _norm("101")
+    assert _norm("A101") != _norm("101")
+    assert _norm("지하101") != _norm("101")
+    assert _norm("b101") == _norm("B101")      # 대소문자만 흡수
+    assert _norm("B0101") == _norm("B101")     # 접두부+앞0
+    # 기존 회귀 유지
+    assert _norm("105") == _norm("제105동") == _norm("105동") == _norm("0105")
+    assert _norm("1403") == _norm("1403호")
 
 
 def _run_all():

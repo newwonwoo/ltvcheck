@@ -29,10 +29,12 @@ from jeonse_pnu import build_pnu  # noqa: E402
 
 
 def ensure_schema(con):
+    # price=고시가격(㎡당 단가). 총액은 조회 시 price×(prvuse+share)로 계산.
+    # PK: 같은 PNU에 여러 동/층/호가 있어 (pnu,ho,year)만으로는 덮어씀 → 확장.
     con.execute("""CREATE TABLE IF NOT EXISTS officetel(
         pnu TEXT, ldcode TEXT, building TEXT, dong TEXT, floor TEXT, ho TEXT,
-        prvuse REAL, price INTEGER, year TEXT,
-        PRIMARY KEY(pnu, ho, year))""")
+        prvuse REAL, share REAL, price INTEGER, year TEXT,
+        PRIMARY KEY(pnu, building, dong, floor, ho, year))""")
     con.execute("CREATE INDEX IF NOT EXISTS idx_off_pnu_ho ON officetel(pnu, ho)")
     con.commit()
 
@@ -69,18 +71,19 @@ def load(xlsx_path, year, db_path, regions=None, batch=5000):
             except Exception:
                 skipped += 1
                 continue
+            # 컬럼: 12고시가격(㎡당) 13전용면적 14공유면적
             buf.append((pnu, ldcode, row[7], str(row[8]), str(row[10]),
-                        str(row[11]), row[13], row[12], str(year)))
+                        str(row[11]), row[13], row[14], row[12], str(year)))
             if len(buf) >= batch:
                 con.executemany(
-                    "INSERT OR REPLACE INTO officetel VALUES (?,?,?,?,?,?,?,?,?)", buf)
+                    "INSERT OR REPLACE INTO officetel VALUES (?,?,?,?,?,?,?,?,?,?)", buf)
                 con.commit()
                 n += len(buf)
                 buf.clear()
                 print(f"\r  적재 중... {n:,}행", end="", flush=True)
     if buf:
         con.executemany(
-            "INSERT OR REPLACE INTO officetel VALUES (?,?,?,?,?,?,?,?,?)", buf)
+            "INSERT OR REPLACE INTO officetel VALUES (?,?,?,?,?,?,?,?,?,?)", buf)
         con.commit()
         n += len(buf)
     wb.close()
