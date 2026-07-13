@@ -16,6 +16,7 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState(null); // {kind:'error'|'empty', message, raw}
   const [regions, setRegions] = useState(null); // 동명이지 후보 리스트
+  const [pnu, setPnu] = useState(null);         // 확정된 PNU (동·호 재조회 시 재정제 방지)
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [compact, setCompact] = useState(false);
@@ -92,15 +93,18 @@ export default function App() {
     setHo(u.ho || "");
     setUnitList(null);
     const q = (unitList?.addr || addr).trim();
-    setTimeout(() => runWith(q, (u.dong || "").trim(), (u.ho || "").trim()), 0);
+    setTimeout(() => runWith(q, (u.dong || "").trim(), (u.ho || "").trim(), pnu), 0);
   }
 
   function pickRegion(c) {
-    // 후보의 정확한 대표주소로 직접 조회(원래 입력을 재검색하면 또 같은 후보가 나옴)
+    // 후보를 고르면 그 후보의 PNU로 바로 조회한다.
+    // 대표주소 문자열로 재검색하면 juso가 또 여러 필지를 물어와 같은 후보 목록이 다시 뜬다.
     const target = c["대표주소"] || [c["시도"], c["시군구"], c["읍면동"]].filter(Boolean).join(" ");
+    const picked = c.pnu || null;
     setAddr(target);
     setRegions(null);
-    setTimeout(() => runWith(target, dong.trim(), ho.trim()), 0);
+    setPnu(picked);
+    setTimeout(() => runWith(target, dong.trim(), ho.trim(), picked), 0);
   }
 
   function pickSample(i) {
@@ -115,25 +119,32 @@ export default function App() {
       addrRef.current?.focus();
       return;
     }
-    runWith(q, dong.trim(), ho.trim());
+    // 주소가 그대로면 확정된 PNU를 재사용(재정제 안 함). 주소를 고쳤으면 PNU를 버린다.
+    runWith(q, dong.trim(), ho.trim(), pnu);
   }
 
-  async function runWith(query, d = "", h = "") {
+  async function runWith(query, d = "", h = "", fixedPnu = null) {
     const q = (query || "").trim();
     if (!q) return;
     setLoading(true);
     setStatus(null);
     try {
+      // 주소가 이미 확정됐으면 PNU로 바로 조회한다.
+      // (같은 주소를 매번 다시 정제하면, 외부 API가 흔들릴 때
+      //  사용자가 후보 선택 화면으로 되돌아간다)
       const res = await fetch("/api/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q, dong: d, ho: h }),
+        body: JSON.stringify({ q, dong: d, ho: h, pnu: fixedPnu || undefined }),
       });
       if (!res.ok) {
         revealStatus("error", "조회를 마치지 못했어요", "조회 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
         return;
       }
       const json = await res.json();
+      // 주소가 확정됐으면(PNU 확보) 붙잡아 둔다 — 다음 조회부터 재정제하지 않는다
+      if (json.pnu) setPnu(json.pnu);
+
       // 동명이지: 여러 지역 후보 → 선택 UI로
       if (json.ambiguous && json.region_candidates?.length) {
         revealRegions(json.region_candidates);
@@ -305,7 +316,7 @@ export default function App() {
             autoComplete="off"
             placeholder="도로명 또는 지번 주소를 적어 주세요"
             value={addr}
-            onChange={(e) => setAddr(e.target.value)}
+            onChange={(e) => { setAddr(e.target.value); setPnu(null); }}
             onKeyDown={(e) => e.key === "Enter" && run()}
           />
         </div>

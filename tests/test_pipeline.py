@@ -602,5 +602,62 @@ def _run_all():
     print(f"\n{len(fns)}/{len(fns)} 통과")
 
 
+# ── v0.10.4: 확정된 PNU 재사용 (후보 선택 무한루프 방지) ──
+def juso_same_dong_multi_parcels(url):
+    """같은 법정동인데 필지가 여러 개 → 후보 여러 개 (실제 케이스: 서초구 반포동)"""
+    return json.dumps({"results": {"common": {"errorCode": "0"}, "juso": [
+        {"admCd": "1165010700", "mtYn": "0", "lnbrMnnm": "18", "lnbrSlno": "0",
+         "roadAddr": "서울특별시 서초구 반포대로 333 (반포동, 래미안 원베일리)",
+         "jibunAddr": "서울특별시 서초구 반포동 18", "bdKdcd": "1",
+         "siNm": "서울특별시", "sggNm": "서초구", "emdNm": "반포동"},
+        {"admCd": "1165010700", "mtYn": "0", "lnbrMnnm": "20", "lnbrSlno": "0",
+         "roadAddr": "서울특별시 서초구 신반포로 127 (반포동)",
+         "jibunAddr": "서울특별시 서초구 반포동 20", "bdKdcd": "1",
+         "siNm": "서울특별시", "sggNm": "서초구", "emdNm": "반포동"},
+    ]}})
+
+
+def apart_reanpo(url):
+    return json.dumps({"apartHousingPrices": {"field": [
+        {"pnu": "1165010700100180000", "dongNm": "113", "hoNm": "203",
+         "pblntfPc": "1800000000", "aphusNm": "래미안 원베일리", "aphusSeCodeNm": "아파트"},
+    ]}})
+
+
+def test_region_candidates_carry_pnu():
+    """후보에 PNU가 실려 와야 한다 (그래야 재정제 없이 바로 조회 가능)"""
+    r = lookup("서울특별시 서초구 반포대로 333", this_year="2026", last_year="2025",
+               juso_http=juso_same_dong_multi_parcels, gongsiga_http=apart_reanpo,
+               juso_key="D", gongsiga_key="D")
+    assert r.ambiguous is True
+    cands = r.region_candidates or []
+    assert len(cands) >= 2
+    for c in cands:
+        assert c.get("pnu"), "후보에 PNU가 없다"
+        assert len(c["pnu"]) == 19, f"PNU가 19자리가 아니다: {c['pnu']}"
+
+
+def test_pnu_given_skips_refine():
+    """PNU가 주어지면 주소를 다시 정제하지 않는다.
+    (재정제하면 juso가 또 여러 필지를 물어와 후보 선택 화면으로 되돌아간다 — 무한루프)"""
+    addr = "서울특별시 서초구 반포대로 333 (반포동, 래미안 원베일리)"
+
+    # PNU 없이: 후보가 또 뜬다
+    r_old = lookup(addr, this_year="2026", last_year="2025", dong="113", ho="203",
+                   juso_http=juso_same_dong_multi_parcels, gongsiga_http=apart_reanpo,
+                   juso_key="D", gongsiga_key="D")
+    assert r_old.ambiguous is True
+
+    # PNU 주면: 정제를 건너뛰고 바로 조회
+    r_new = lookup(addr, this_year="2026", last_year="2025", dong="113", ho="203",
+                   pnu="1165010700100180000",
+                   juso_http=juso_same_dong_multi_parcels, gongsiga_http=apart_reanpo,
+                   juso_key="D", gongsiga_key="D")
+    assert r_new.ambiguous is False, "PNU를 줬는데도 후보가 떴다"
+    assert r_new.pnu == "1165010700100180000"
+    assert r_new.dong == "113" and r_new.ho == "203"
+    assert r_new.building_name == "래미안 원베일리"
+
+
 if __name__ == "__main__":
     _run_all()

@@ -113,6 +113,9 @@ def _group_by_region(juso_list):
                 "시군구": it.get("sggNm"),
                 "읍면동": it.get("emdNm"),
                 "pnu_prefix": admcd[:10],
+                # 필지 식별키가 곧 PNU 19자리다. 후보를 고르면 이 PNU로 바로 조회해
+                # 주소를 다시 정제하지 않는다(재정제하면 같은 후보 목록이 또 뜬다).
+                "pnu": key,
                 "대표주소": it.get("roadAddr") or it.get("jibunAddr"),
                 "우편번호": it.get("zipNo"),
                 "_item": it,  # 대표 1건(번지까지 확정용)

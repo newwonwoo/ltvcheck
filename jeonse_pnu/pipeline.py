@@ -175,7 +175,7 @@ def _strip_unit_tail(text, dong, ho):
 
 
 def lookup(text, *, this_year, last_year,
-           dong=None, ho=None,
+           dong=None, ho=None, pnu=None,
            registry_lookup=None,
            juso_http=None, kakao_http=None, gongsiga_http=None,
            juso_key=None, kakao_key=None, gongsiga_key=None,
@@ -186,6 +186,10 @@ def lookup(text, *, this_year, last_year,
 
     this_year/last_year: 비교할 두 공시연도(예: "2026","2025")
     dong/ho            : 명시적 동·호(입력칸에서 분리해 받은 값). 주어지면 파싱보다 우선.
+    pnu                : 이미 확정된 PNU. 주어지면 주소 정제를 건너뛴다.
+                         (한 번 확정한 주소를 동·호 입력 때마다 다시 정제하면
+                          외부 API 응답이 흔들릴 때 후보 선택 화면으로 되돌아간다.
+                          확정된 것은 다시 묻지 않는다.)
     registry_lookup    : 등기고유번호 → 주소 콜백(보증 DB 조회)
     *_http / *_key     : 테스트/운영용 주입(없으면 환경변수 사용)
     """
@@ -215,37 +219,46 @@ def lookup(text, *, this_year, last_year,
     #   - 지번이 없으면(건물명만 입력한 경우) 원문을 그대로 넘긴다.
     #     juso는 건물명 검색을 지원하므로 "구로구 진오피스텔" 같은 입력도 정제됨.
     #     (파서 검색질의는 건물명을 지번으로 못 봐 떨궈버리므로 원문이 정확)
-    if parsed.본번:
-        query = parsed.검색질의 or routed.원본
+    # 2~3) 주소 정제 → PNU
+    #   PNU가 이미 확정돼 있으면(동·호만 바꿔 재조회하는 경우) 정제를 건너뛴다.
+    #   한 번 확정한 주소를 매번 다시 정제하면, 외부 API 응답이 흔들릴 때
+    #   사용자가 후보 선택 화면으로 되돌아간다. 확정된 것은 다시 묻지 않는다.
+    geo = None
+    if pnu:
+        out.pnu = str(pnu).strip()
+        out.refined_address = (text or "").strip() or None
     else:
-        # 동·호 상세만 떼고 건물명은 유지한 채 원문 사용
-        query = _strip_unit_tail(routed.원본, out.dong, out.ho) or routed.원본
-    geo = geocode(query, juso_http=juso_http, kakao_http=kakao_http,
-                  juso_key=juso_key, kakao_key=kakao_key)
-    out.warnings.extend(geo.warnings)
+        if parsed.본번:
+            query = parsed.검색질의 or routed.원본
+        else:
+            # 동·호 상세만 떼고 건물명은 유지한 채 원문 사용
+            query = _strip_unit_tail(routed.원본, out.dong, out.ho) or routed.원본
+        geo = geocode(query, juso_http=juso_http, kakao_http=kakao_http,
+                      juso_key=juso_key, kakao_key=kakao_key)
+        out.warnings.extend(geo.warnings)
 
-    if not geo.ok:
-        # 동명이지(여러 행정구역) → 정직하게 상위 행정구역 요구 + 후보 전달
-        if getattr(geo, "ambiguous", False):
-            out.ambiguous = True
-            out.region_candidates = geo.region_candidates
-            out.warnings.append("여러 지역에 같은 동명 - 시/도·시군구를 함께 입력하세요")
-        # 정제 실패 → 신뢰도 F로 마감
-        c = score_confidence(refine_tier=0, has_jibun=bool(parsed.본번),
-                             has_ho=bool(out.ho), warnings=out.warnings)
-        out.confidence_score, out.confidence_grade = c.score, c.grade
-        out.needs_manual_check = c.needs_manual_check
-        return out
+        if not geo.ok:
+            # 동명이지(여러 행정구역) → 정직하게 상위 행정구역 요구 + 후보 전달
+            if getattr(geo, "ambiguous", False):
+                out.ambiguous = True
+                out.region_candidates = geo.region_candidates
+                out.warnings.append("여러 지역에 같은 동명 - 시/도·시군구를 함께 입력하세요")
+            # 정제 실패 → 신뢰도 F로 마감
+            c = score_confidence(refine_tier=0, has_jibun=bool(parsed.본번),
+                                 has_ho=bool(out.ho), warnings=out.warnings)
+            out.confidence_score, out.confidence_grade = c.score, c.grade
+            out.needs_manual_check = c.needs_manual_check
+            return out
 
-    out.refined_address = geo.refined_address
+        out.refined_address = geo.refined_address
+        try:
+            out.pnu = geo.parts.to_pnu()
+        except PnuError as e:
+            out.warnings.append(f"PNU 조립 실패: {e}")
+            return out
 
-    # 3) PNU 조립
-    try:
-        pnu = geo.parts.to_pnu()
-        out.pnu = pnu
-    except PnuError as e:
-        out.warnings.append(f"PNU 조립 실패: {e}")
-        return out
+    pnu = out.pnu
+    geo_tier = geo.tier if geo is not None else 0   # PNU 직접조회 시 geo 없음
 
     # 4) 구·신 공시가 조회 — 두 경로 모두 시도해 값이 나오는 쪽 채택
     #    (한 물건은 연립·다세대[VWorld API] 또는 오피스텔[국세청 DB] 중 하나에만 존재)
@@ -287,7 +300,7 @@ def lookup(text, *, this_year, last_year,
         out.available_units = _unit_list(apt_cur.units)
         out.warnings.extend(apt_cur.warnings)
         # 신뢰도만 매겨 조기 반환(값 없음 = 임의값 안 냄)
-        c = score_confidence(refine_tier=geo.tier, has_jibun=bool(parsed.본번),
+        c = score_confidence(refine_tier=geo_tier, has_jibun=bool(parsed.본번),
                              has_ho=False, warnings=out.warnings)
         out.confidence_score, out.confidence_grade = c.score, c.grade
         out.needs_manual_check = c.needs_manual_check
@@ -319,7 +332,7 @@ def lookup(text, *, this_year, last_year,
         out.needs_unit = True
         out.available_units = _unit_list(ofc_cur.units, dong_attr="dong", ho_attr="ho")
         out.warnings.extend(ofc_cur.warnings)
-        c = score_confidence(refine_tier=geo.tier, has_jibun=bool(parsed.본번),
+        c = score_confidence(refine_tier=geo_tier, has_jibun=bool(parsed.본번),
                              has_ho=False, warnings=out.warnings)
         out.confidence_score, out.confidence_grade = c.score, c.grade
         out.needs_manual_check = c.needs_manual_check
@@ -343,9 +356,9 @@ def lookup(text, *, this_year, last_year,
     # 5) 신뢰도
     #    has_jibun은 '정제 결과(geo.parts)에 본번이 있는가'로 판단한다.
     #    (도로명주소는 등기부 파싱(parsed.본번)엔 지번이 없지만, juso 정제로 지번이 확보됨)
-    refined_bonbun = bool(getattr(geo.parts, "본번", None)) or bool(out.pnu)
+    refined_bonbun = (bool(getattr(geo.parts, "본번", None)) if geo else False) or bool(out.pnu)
     c = score_confidence(
-        refine_tier=geo.tier,
+        refine_tier=geo_tier,
         has_jibun=refined_bonbun,
         # 호 확인은 '원천 데이터와 실제 매칭'된 경우만. 입력만 했다고 가산하지 않음.
         has_ho=ho_matched,
