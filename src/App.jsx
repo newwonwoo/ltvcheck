@@ -152,9 +152,27 @@ export default function App() {
       }
       // 여러 세대 → 존재하는 동·호 목록을 보여주고 고르게 함(임의 대표값 안 씀)
       if (json.needs_unit) {
+        // ★ 동·호를 명시했는데도 못 찾았다면, 세대판을 또 띄우지 않는다.
+        //   같은 화면을 반복하면 사용자는 "아무 일도 안 일어난다"고 느낀다.
+        //   왜 못 찾았는지 정직하게 말한다.
+        if (d && h) {
+          const why = (json.warnings || []).filter((w) =>
+            /없어요|일부만 조회|여러 동에/.test(w)
+          );
+          revealStatus(
+            "warn",
+            `${d}동 ${h}호를 찾지 못했어요`,
+            why.length
+              ? why.join(" ")
+              : "공시가 자료에서 그 세대를 특정하지 못했어요. 동·호를 다시 확인해 주세요.",
+            json
+          );
+          return;
+        }
         const nm = json.building_name || "이 건물";
         const units = json.available_units || [];
-        setUnitList({ name: nm, units, addr: json.refined_address || q });
+        setUnitList({ name: nm, units, addr: json.refined_address || q,
+                      warnings: json.warnings || [], pnu: json.pnu });
         setStatus(null);
         setResult(null);
         setRegions(null);

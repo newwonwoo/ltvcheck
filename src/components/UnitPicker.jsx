@@ -98,6 +98,17 @@ export default function UnitPicker({ data, dong = "", ho = "", onPick, show }) {
           </div>
         )}
 
+        {/* 왜 못 찾았는지 — 추측하지 않고 원문 그대로 보여준다 */}
+        {(data.warnings || []).some((w) => /없어요|일부만 조회|여러 동에/.test(w)) && (
+          <div className="unit-why">
+            {data.warnings
+              .filter((w) => /없어요|일부만 조회|여러 동에/.test(w))
+              .map((w, i) => (
+                <div key={i} className={w.startsWith("★") ? "unit-why-bad" : ""}>{w}</div>
+              ))}
+          </div>
+        )}
+
         {/* 호 */}
         {!dongNeeded && (
           <div className="unit-block">

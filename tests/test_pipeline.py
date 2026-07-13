@@ -659,5 +659,68 @@ def test_pnu_given_skips_refine():
     assert r_new.building_name == "래미안 원베일리"
 
 
+# ── v0.10.7: 대단지 세대 매칭 (서버 필터 1차 + 전체수신 폴백) ──
+def test_large_complex_server_filter():
+    """2,462세대 대단지: 동·호를 주면 서버 필터가 1건만 준다.
+    전체 수신은 1,000건 제한이 있어 페이지를 놓치면 못 찾는다 — 그 위험을 우회한다."""
+    from jeonse_pnu.gongsiga import fetch_price_by_pnu
+    PNU = "1156013300100280000"
+    calls = []
+
+    def http(url):
+        calls.append(url)
+        if "dongNm=106" in url and "hoNm=802" in url:
+            return json.dumps({"apartHousingPrices": {"field": [
+                {"pnu": PNU, "dongNm": "106", "hoNm": "802", "pblntfPc": "900000000",
+                 "aphusNm": "영등포푸르지오", "aphusSeCodeNm": "아파트"}], "totalCount": 1}})
+        # 전체 요청: 2462건인데 1000건만 온다(페이지 누락 재현)
+        return json.dumps({"apartHousingPrices": {"field": [
+            {"pnu": PNU, "dongNm": "218", "hoNm": str(i), "pblntfPc": "9",
+             "aphusNm": "영등포푸르지오", "aphusSeCodeNm": "아파트"} for i in range(1000)],
+            "totalCount": 2462}})
+
+    r = fetch_price_by_pnu(PNU, "2026", dong="106", ho="802", http_get=http, key="K")
+    assert r.matched is not None, "서버 필터로 세대를 찾지 못했다"
+    assert r.price == 900_000_000
+    assert len(calls) == 1, "서버 필터로 끝나야 하는데 전체 수신까지 갔다"
+
+
+def test_notation_mismatch_falls_back():
+    """VWorld 표기가 '제106동'/'0802'면 서버 필터가 0건 → 전체 수신 폴백이 흡수한다."""
+    from jeonse_pnu.gongsiga import fetch_price_by_pnu
+    PNU = "1156013300100280000"
+
+    def http(url):
+        if "dongNm=" in url:
+            return json.dumps({"apartHousingPrices": {"field": [], "totalCount": 0}})
+        return json.dumps({"apartHousingPrices": {"field": [
+            {"pnu": PNU, "dongNm": "제106동", "hoNm": "0802", "pblntfPc": "900000000",
+             "aphusNm": "영등포푸르지오", "aphusSeCodeNm": "아파트"},
+            {"pnu": PNU, "dongNm": "제218동", "hoNm": "0802", "pblntfPc": "800000000",
+             "aphusNm": "영등포푸르지오", "aphusSeCodeNm": "아파트"}], "totalCount": 2}})
+
+    r = fetch_price_by_pnu(PNU, "2026", dong="106", ho="802", http_get=http, key="K")
+    assert r.matched is not None, "폴백이 표기차를 흡수하지 못했다"
+    assert r.price == 900_000_000
+
+
+def test_no_unit_still_lists_all():
+    """동·호 없이 조회하면 전체를 받아 세대 목록을 만든다(기존 동작 유지)."""
+    from jeonse_pnu.gongsiga import fetch_price_by_pnu
+    PNU = "1156013300100280000"
+
+    def http(url):
+        return json.dumps({"apartHousingPrices": {"field": [
+            {"pnu": PNU, "dongNm": "106", "hoNm": "802", "pblntfPc": "9",
+             "aphusNm": "A", "aphusSeCodeNm": "아파트"},
+            {"pnu": PNU, "dongNm": "218", "hoNm": "802", "pblntfPc": "8",
+             "aphusNm": "A", "aphusSeCodeNm": "아파트"}], "totalCount": 2}})
+
+    r = fetch_price_by_pnu(PNU, "2026", http_get=http, key="K")
+    assert len(r.units) == 2
+    assert r.needs_unit is True
+    assert r.price is None, "임의 대표세대를 쓰면 안 된다"
+
+
 if __name__ == "__main__":
     _run_all()

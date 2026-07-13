@@ -196,7 +196,31 @@ def fetch_price_by_pnu(pnu, year=None, *, dong=None, ho=None,
         res.warnings.append("VWORLD_API_KEY 미설정")
         return res
 
-    # 한 PNU 전체를 받아 우리 쪽에서 매칭한다(서버 표기차 흡수 위해 §설계).
+    # ── 1차: 동·호를 VWorld에 넘겨 서버가 좁히게 한다 ──
+    # 대단지(2,000세대+)는 전체 수신 시 페이지 순회가 필요하고, 한 페이지라도
+    # 놓치면 해당 세대를 못 찾는다. 동·호를 알고 있으면 서버 필터가 훨씬 안전하다.
+    # (단, VWorld 표기가 "제106동" 같으면 서버 필터가 0건을 줄 수 있어 → 2차로 폴백)
+    if dong or ho:
+        try:
+            raw1 = http_get(_build_url(pnu, year=year, dong=dong, ho=ho,
+                                       key=key, domain=domain, num_rows=1000, page=1))
+            f1, t1, e1 = _parse_json(raw1)
+            if not e1 and f1:
+                u1 = [_to_unit(f) for f in f1]
+                # 서버가 좁혀준 결과를 우리 기준으로 재확인(신뢰하되 검증)
+                exact = [u for u in u1
+                         if ((not dong) or _norm(u.dongNm) == _norm(dong))
+                         and ((not ho) or _norm(u.hoNm) == _norm(ho))]
+                if len(exact) == 1:
+                    res.units = u1
+                    res.total_count = t1 or len(u1)
+                    res.matched = exact[0]
+                    res.price = exact[0].price
+                    return res
+        except Exception:
+            pass  # 실패하면 조용히 2차(전체 수신)로 넘어간다
+
+    # ── 2차: 한 PNU 전체를 받아 우리 쪽에서 매칭한다(서버 표기차 흡수) ──
     # 1000건 초과 대단지는 페이지를 이어받아 세대 누락을 막는다.
     try:
         NUM = 1000
@@ -251,6 +275,25 @@ def fetch_price_by_pnu(pnu, year=None, *, dong=None, ho=None,
                 # 호로만 좁혔는데 여러 동에 같은 호 → 동이 꼭 필요
                 res.needs_unit = True
                 res.warnings.append(f"같은 호가 여러 동에 있음({len(cands)}건) - 동을 입력해야 특정 가능")
+            elif dong:
+                # 동을 넣었는데 0건 → 왜 못 찾았는지 정직하게 남긴다(추측 금지)
+                dongs_seen = sorted({_norm(u.dongNm) for u in res.units if _norm(u.dongNm)})
+                if _norm(dong) not in dongs_seen:
+                    res.warnings.append(
+                        f"입력한 {dong}동이 조회된 세대에 없어요 "
+                        f"(조회된 동 {len(dongs_seen)}개: {', '.join(dongs_seen[:10])}"
+                        f"{'…' if len(dongs_seen) > 10 else ''})")
+                else:
+                    hos_in_dong = sorted({_norm(u.hoNm) for u in res.units
+                                          if _norm(u.dongNm) == _norm(dong)})
+                    res.warnings.append(
+                        f"{dong}동에 {ho}호가 없어요 "
+                        f"({dong}동 {len(hos_in_dong)}세대: {', '.join(hos_in_dong[:8])}…)")
+                # 세대를 다 받았는지도 남긴다(페이지 누락이면 매칭이 실패할 수 있다)
+                if res.total_count and len(res.units) < res.total_count:
+                    res.warnings.append(
+                        f"★세대 일부만 조회됨: {len(res.units)}/{res.total_count}건 "
+                        f"— 페이지 수신 누락 (이 때문에 못 찾았을 수 있어요)")
 
         # 값 확정 규칙 (임의 대표세대 금지):
         if res.matched is not None:
