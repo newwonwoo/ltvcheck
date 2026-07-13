@@ -355,7 +355,9 @@ export default function App() {
       {/* 결과 / 상태 / 동명이지 후보 */}
       <div ref={resultRef}>
         {unitList ? (
-          <UnitPicker data={unitList} onPick={pickUnit} show={show} />
+          <UnitPicker
+          dong={dong}
+          ho={ho} data={unitList} onPick={pickUnit} show={show} />
         ) : regions ? (
           <RegionPicker regions={regions} onPick={pickRegion} show={show} />
         ) : status ? (
